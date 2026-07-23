@@ -128,4 +128,76 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** GitHub Actions matrix on Python 3.11 and 3.12. Each job installed the project and development dependencies, passed `ruff check .`, and passed `pytest --cov=market_sentinel --cov-report=term-missing`.  
 **Results:** Both matrix jobs passed with no Ruff diagnostics and no failed tests. No API keys, credentials, or generated data files were committed.  
 **Risks / Blockers:** Automatic forward-outcome calculation remains intentionally deferred; the schema is present, but a future job must define trading-session horizons and point-in-time data policy before populating outcomes. Production upgrades should be backed up before running the additive table bootstrap and idempotent history migration.  
-**Next Steps:** Review pull request #5, verify the production backup, then run `flask --app wsgi sentinel init-db` followed by `flask --app wsgi sentinel migrate-history` after merge.
+**Next Steps:** Review pull request #5, verify the production backup, then run `flask --app wsgi sentinel init-db` followed by `flask --app wsgi sentinel migrate-history` after merge.  
+
+---
+
+### 2026-07-23 — Comprehensive AWS Deployment Guide
+
+**Checkpoint Type:** Session Start  
+**Directive Compliance KPI:** 5/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance tracking started; #3 the current `main` branch previously passed the Python 3.11/3.12 CI matrix; #5 no application UI changes are planned; #7 existing deployment files and official AWS/Docker guidance were verified before drafting; #8 this checkpoint records scope and evidence.  
+- **Yellow:** #2 no Python execution is needed for a Markdown-only change; #4 post-change documentation/CI checks are pending; #6 no application input handling is changed.  
+- **Red:** none.  
+**Trigger Event:** User requested a comprehensive, user-friendly root-level `DEPLOY.md` for deploying Market Sentinel to AWS.  
+**KPI Delta:** New documentation session started at 5/8 green.  
+**Actions Completed:** Read `prime_directive.md` and `AGENTS.md`; reviewed `README.md`, `docs/DEPLOYMENT.md`, `Dockerfile`, `docker-compose.yml`, `.env.example`, the current research-history workflow, and official AWS/Docker deployment documentation; created branch `docs/comprehensive-aws-deployment` from current `main`.  
+**Tests Run:** No Python or UI tests required at this checkpoint; this is a documentation-only change.  
+**Results:** The deployment architecture and verified command/configuration inputs are ready for drafting.  
+**Risks / Blockers:** AWS console labels and available instance classes can evolve; the guide will use stable service concepts, explain placeholders, and link to official documentation rather than hard-code transient pricing or class availability.  
+**Next Steps:** Create `DEPLOY.md`, add a discoverable README link, review all commands/placeholders for security and consistency, then open a pull request and verify CI.  
+
+---
+
+### 2026-07-23 — AWS Deployment Guide Implementation
+
+**Checkpoint Type:** Implementation  
+**Directive Compliance KPI:** 6/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance tracking remained active; #3 the branch started from a previously green `main`; #5 no application UI changed; #6 all examples use explicit placeholders and safe input practices; #7 command-review findings were corrected instead of documented as workarounds; #8 implementation details and remaining gate are recorded.  
+- **Yellow:** #2 no Python execution is required for this Markdown-only change; #4 the pull-request workflow and independent documentation review are pending.  
+- **Red:** none.  
+**Trigger Event:** The comprehensive guide and concise-reference link were committed on the documentation branch.  
+**KPI Delta:** +1 green after completing security and command validation.  
+**Actions Completed:** Added root-level `DEPLOY.md` covering Route 53, ACM, ALB, EC2, Session Manager, Docker Compose, private RDS PostgreSQL, environment configuration, initial collection, OpenAI, Mailgun, cron, S3 exports, backups, monitoring, upgrades, rollback, troubleshooting, hardening, lower-cost alternatives, and teardown. Corrected Session Manager user assumptions, moved the cron lock to an application-owned path, avoided printing resolved Compose secrets, and kept S3 export timestamps consistent. Linked `docs/DEPLOYMENT.md` to the comprehensive guide.  
+**Tests Run:** Manual static review against the current `Dockerfile`, `docker-compose.yml`, `.env.example`, Flask CLI commands, health endpoint, and research-history behavior. Compared the branch to `main`: only Markdown files changed, with no credential-bearing files or application code in the diff.  
+**Results:** Pull request #6 is open and mergeable; no real credentials, account identifiers, domain names, or private keys are present.  
+**Risks / Blockers:** GitHub Actions had not yet attached a run to the documentation PR at this checkpoint. AWS console labels and product options may evolve, so official references are included and transient prices are not asserted.  
+**Next Steps:** Trigger and verify the final pull-request CI workflow, address reviewer feedback, and record the handoff checkpoint.  
+
+---
+
+### 2026-07-23 — AWS Deployment Guide Handoff
+
+**Checkpoint Type:** Handoff  
+**Directive Compliance KPI:** 6/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance was tracked throughout; #3 the branch started from a green `main`; #5 no application UI changed; #6 examples use placeholders and safe secret-handling practices; #7 command and permission issues were investigated and corrected; #8 scope, review evidence, risks, and next action are documented.  
+- **Yellow:** #2 no Python execution was applicable to this Markdown-only change; #4 GitHub Actions did not attach a workflow run to PR #6 after the branch update and PR reopen.  
+- **Red:** none.  
+**Trigger Event:** Copilot completed an independent review of all three changed files and generated no comments.  
+**KPI Delta:** No KPI change; independent review completed, while the absent workflow run remains transparently yellow.  
+**Actions Completed:** Finalized the root deployment guide, updated the concise deployment note, reviewed the complete branch diff for secret exposure and scope, reopened the PR to refresh its head, and requested independent review.  
+**Tests Run:** Documentation-only static verification against current repository configuration and commands. Copilot reviewed 3/3 changed files with no findings. Repeated workflow queries returned no run for the documentation PR, so no CI pass is claimed.  
+**Results:** PR #6 is open, mergeable, and ready for owner review. The diff contains Markdown only and no credentials or application behavior changes.  
+**Risks / Blockers:** AWS console wording, supported versions, and available instance classes may change over time. Official AWS and Docker references are included. The owner may choose to rerun or require CI before merge if repository policy mandates a check on documentation-only changes.  
+**Next Steps:** Review and merge PR #6 when satisfied, then follow `DEPLOY.md` using actual AWS account, domain, and secret values.  
+
+---
+
+### 2026-07-23 — AWS Deployment Guide Final Validation
+
+**Checkpoint Type:** Test Gate  
+**Directive Compliance KPI:** 7/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance tracking remained active; #3 the branch started from a green baseline; #4 the complete pull-request CI matrix passed; #5 no UI changed; #6 examples retain safe placeholders and validation guidance; #7 earlier access, locking, and secret-output concerns were corrected; #8 final validation evidence is recorded.  
+- **Yellow:** #2 no local Python execution was applicable to this Markdown-only change; GitHub Actions provided the repository regression gate.  
+- **Red:** none.  
+**Trigger Event:** GitHub Actions run 29993139840 completed successfully after the final documentation handoff commit.  
+**KPI Delta:** +1 green after the post-change workflow completed.  
+**Actions Completed:** Verified the CI result and retained the independent Copilot review with no comments.  
+**Tests Run:** GitHub Actions matrix on Python 3.11 and 3.12; both jobs installed dependencies, passed Ruff, and passed the full pytest coverage command.  
+**Results:** The documentation branch passed the repository's complete automated quality gate. No application code, credentials, or generated deployment artifacts were introduced.  
+**Risks / Blockers:** AWS console labels and service options remain time-sensitive; the guide includes official references and avoids fixed price claims.  
+**Next Steps:** Review and merge PR #6, then follow `DEPLOY.md` using the actual AWS account, domain, and securely stored credentials.
