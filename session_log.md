@@ -146,4 +146,22 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** No Python or UI tests required at this checkpoint; this is a documentation-only change.  
 **Results:** The deployment architecture and verified command/configuration inputs are ready for drafting.  
 **Risks / Blockers:** AWS console labels and available instance classes can evolve; the guide will use stable service concepts, explain placeholders, and link to official documentation rather than hard-code transient pricing or class availability.  
-**Next Steps:** Create `DEPLOY.md`, add a discoverable README link, review all commands/placeholders for security and consistency, then open a pull request and verify CI.
+**Next Steps:** Create `DEPLOY.md`, add a discoverable README link, review all commands/placeholders for security and consistency, then open a pull request and verify CI.  
+
+---
+
+### 2026-07-23 — AWS Deployment Guide Implementation
+
+**Checkpoint Type:** Implementation  
+**Directive Compliance KPI:** 6/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance tracking remained active; #3 the branch started from a previously green `main`; #5 no application UI changed; #6 all examples use explicit placeholders and safe input practices; #7 command-review findings were corrected instead of documented as workarounds; #8 implementation details and remaining gate are recorded.  
+- **Yellow:** #2 no Python execution is required for this Markdown-only change; #4 the pull-request workflow and independent documentation review are pending.  
+- **Red:** none.  
+**Trigger Event:** The comprehensive guide and concise-reference link were committed on the documentation branch.  
+**KPI Delta:** +1 green after completing security and command validation.  
+**Actions Completed:** Added root-level `DEPLOY.md` covering Route 53, ACM, ALB, EC2, Session Manager, Docker Compose, private RDS PostgreSQL, environment configuration, initial collection, OpenAI, Mailgun, cron, S3 exports, backups, monitoring, upgrades, rollback, troubleshooting, hardening, lower-cost alternatives, and teardown. Corrected Session Manager user assumptions, moved the cron lock to an application-owned path, avoided printing resolved Compose secrets, and kept S3 export timestamps consistent. Linked `docs/DEPLOYMENT.md` to the comprehensive guide.  
+**Tests Run:** Manual static review against the current `Dockerfile`, `docker-compose.yml`, `.env.example`, Flask CLI commands, health endpoint, and research-history behavior. Compared the branch to `main`: only Markdown files changed, with no credential-bearing files or application code in the diff.  
+**Results:** Pull request #6 is open and mergeable; no real credentials, account identifiers, domain names, or private keys are present.  
+**Risks / Blockers:** GitHub Actions had not yet attached a run to the documentation PR at this checkpoint. AWS console labels and product options may evolve, so official references are included and transient prices are not asserted.  
+**Next Steps:** Trigger and verify the final pull-request CI workflow, address reviewer feedback, and record the handoff checkpoint.
