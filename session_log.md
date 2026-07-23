@@ -128,4 +128,22 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** GitHub Actions matrix on Python 3.11 and 3.12. Each job installed the project and development dependencies, passed `ruff check .`, and passed `pytest --cov=market_sentinel --cov-report=term-missing`.  
 **Results:** Both matrix jobs passed with no Ruff diagnostics and no failed tests. No API keys, credentials, or generated data files were committed.  
 **Risks / Blockers:** Automatic forward-outcome calculation remains intentionally deferred; the schema is present, but a future job must define trading-session horizons and point-in-time data policy before populating outcomes. Production upgrades should be backed up before running the additive table bootstrap and idempotent history migration.  
-**Next Steps:** Review pull request #5, verify the production backup, then run `flask --app wsgi sentinel init-db` followed by `flask --app wsgi sentinel migrate-history` after merge.
+**Next Steps:** Review pull request #5, verify the production backup, then run `flask --app wsgi sentinel init-db` followed by `flask --app wsgi sentinel migrate-history` after merge.  
+
+---
+
+### 2026-07-23 — Comprehensive AWS Deployment Guide
+
+**Checkpoint Type:** Session Start  
+**Directive Compliance KPI:** 5/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance tracking started; #3 the current `main` branch previously passed the Python 3.11/3.12 CI matrix; #5 no application UI changes are planned; #7 existing deployment files and official AWS/Docker guidance were verified before drafting; #8 this checkpoint records scope and evidence.  
+- **Yellow:** #2 no Python execution is needed for a Markdown-only change; #4 post-change documentation/CI checks are pending; #6 no application input handling is changed.  
+- **Red:** none.  
+**Trigger Event:** User requested a comprehensive, user-friendly root-level `DEPLOY.md` for deploying Market Sentinel to AWS.  
+**KPI Delta:** New documentation session started at 5/8 green.  
+**Actions Completed:** Read `prime_directive.md` and `AGENTS.md`; reviewed `README.md`, `docs/DEPLOYMENT.md`, `Dockerfile`, `docker-compose.yml`, `.env.example`, the current research-history workflow, and official AWS/Docker deployment documentation; created branch `docs/comprehensive-aws-deployment` from current `main`.  
+**Tests Run:** No Python or UI tests required at this checkpoint; this is a documentation-only change.  
+**Results:** The deployment architecture and verified command/configuration inputs are ready for drafting.  
+**Risks / Blockers:** AWS console labels and available instance classes can evolve; the guide will use stable service concepts, explain placeholders, and link to official documentation rather than hard-code transient pricing or class availability.  
+**Next Steps:** Create `DEPLOY.md`, add a discoverable README link, review all commands/placeholders for security and consistency, then open a pull request and verify CI.
