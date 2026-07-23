@@ -136,7 +136,7 @@ class SentinelOrchestrator:
         reasons = decision.reasons or ["Forced test alert."]
         fingerprint = self._alert_fingerprint(snapshot.market_as_of, severity, reasons)
         existing = AlertEvent.query.filter_by(fingerprint=fingerprint).one_or_none()
-        if existing is not None:
+        if existing is not None and existing.status == "sent":
             return existing
 
         cutoff = datetime.now(UTC) - timedelta(
@@ -175,19 +175,18 @@ class SentinelOrchestrator:
             html=html,
             tags=["market-sentinel", severity],
         )
-        event = AlertEvent(
-            snapshot_id=snapshot.id,
-            severity=severity,
-            subject=subject,
-            reasons=reasons,
-            fingerprint=fingerprint,
-            status="sent" if result.success else "failed",
-            recipients=recipients,
-            provider_id=result.provider_id,
-            error=result.error,
-            sent_at=datetime.now(UTC) if result.success else None,
-        )
-        db.session.add(event)
+        event = existing or AlertEvent(fingerprint=fingerprint)
+        if existing is None:
+            db.session.add(event)
+        event.snapshot_id = snapshot.id
+        event.severity = severity
+        event.subject = subject
+        event.reasons = reasons
+        event.status = "sent" if result.success else "failed"
+        event.recipients = recipients
+        event.provider_id = result.provider_id
+        event.error = result.error
+        event.sent_at = datetime.now(UTC) if result.success else None
         db.session.commit()
         return event
 
