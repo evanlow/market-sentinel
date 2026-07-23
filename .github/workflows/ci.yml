@@ -26,7 +26,10 @@ jobs:
       - name: Run Ruff
         id: ruff
         continue-on-error: true
-        run: ruff check . --output-format=concise | tee ruff-report.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          ruff check . --output-format=concise | tee ruff-report.txt
       - name: Upload Ruff report
         if: steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@v4
