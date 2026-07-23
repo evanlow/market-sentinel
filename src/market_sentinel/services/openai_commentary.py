@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAICommentaryService:
+    PROVIDER = "openai"
+    PROMPT_VERSION = "1.0.0"
+
     def __init__(
         self,
         *,

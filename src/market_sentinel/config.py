@@ -47,6 +47,7 @@ def default_config() -> dict[str, Any]:
 
     return {
         "APP_ENV": os.getenv("APP_ENV", "development"),
+        "APP_GIT_SHA": os.getenv("APP_GIT_SHA", os.getenv("GITHUB_SHA", "")),
         "SECRET_KEY": os.getenv("SECRET_KEY", "dev-only-change-me"),
         "SQLALCHEMY_DATABASE_URI": database_url,
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
@@ -68,5 +69,6 @@ def default_config() -> dict[str, Any]:
         "ALERTS_ENABLED": env_bool("ALERTS_ENABLED", False),
         "ALERT_MIN_COVERAGE": env_float("ALERT_MIN_COVERAGE", 0.70),
         "ALERT_COOLDOWN_HOURS": env_int("ALERT_COOLDOWN_HOURS", 18),
+        "HISTORY_API_MAX_LIMIT": env_int("HISTORY_API_MAX_LIMIT", 5000),
         "JSON_SORT_KEYS": False,
     }

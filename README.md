@@ -1,9 +1,9 @@
 # Market Sentinel
 
 Market Sentinel is a Flask application that converts a set of market, volatility, breadth, credit,
-rates, commodity, global, and structural indicators into a deterministic **0–100 Market Stress
-Score**. It provides a web dashboard, optional OpenAI-generated plain-English commentary, Mailgun daily
-summaries, and rule-based red alerts.
+rates, commodity, global, and structural indicators into a deterministic **0-100 Market Stress
+Score**. It provides a web dashboard, persistent research-grade score history, optional OpenAI-generated
+plain-English commentary, Mailgun daily summaries, and rule-based red alerts.
 
 It is deliberately described as a **risk monitor**, not a crash predictor. Margin debt, valuations, and
 concentration describe vulnerability; faster indicators such as trend breaks, volatility, breadth, and
@@ -35,17 +35,19 @@ Yahoo Finance / FRED / monthly FINRA input
                   |
                   v
        deterministic risk engine
-          |                 |
-          v                 v
-     Flask dashboard    alert policy
-                            |
-             optional OpenAI explanation
-                            |
-                         Mailgun
+          |          |             |
+          v          v             v
+ operational     versioned      alert policy
+ snapshot        score runs          |
+          |          |        optional OpenAI
+          v          v             |
+ Flask dashboard  research API    Mailgun
+                    + exports
 ```
 
 The OpenAI layer never changes the score or trigger states. It receives compact calculated data and
-produces an explanatory narrative only.
+produces an explanatory narrative only. Commentary versions are stored separately from deterministic
+score runs.
 
 ## Quick start
 
@@ -75,6 +77,7 @@ Set values in `.env` locally and use a host secret store in production. Never co
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | SQLite by default, or a PostgreSQL URI |
+| `APP_GIT_SHA` | Optional deployed commit SHA stored with new score runs |
 | `FRED_API_KEY` | High-yield spread, Treasury yield, and GDP data |
 | `OPENAI_ENABLED` | Enables commentary only when also supplied an API key |
 | `OPENAI_API_KEY` | Server-side OpenAI credential |
@@ -85,13 +88,14 @@ Set values in `.env` locally and use a host secret store in production. Never co
 | `ALERTS_ENABLED` | Enables rule-triggered alert delivery |
 | `ALERT_MIN_COVERAGE` | Default `0.70`; lower coverage suppresses alerts |
 | `ALERT_COOLDOWN_HOURS` | Prevents repeated same-severity alerts |
+| `HISTORY_API_MAX_LIMIT` | Maximum records returned by one history API request |
 
 Mailgun EU-region users can set `MAILGUN_API_BASE=https://api.eu.mailgun.net`.
 
 ## Commands
 
 ```bash
-# Create tables
+# Create operational and research-history tables
 flask --app wsgi sentinel init-db
 
 # Collect and score live data
@@ -104,6 +108,23 @@ flask --app wsgi sentinel run-daily
 flask --app wsgi sentinel send-daily --force
 flask --app wsgi sentinel evaluate-alert --force
 
+# Copy legacy snapshots into append-only research history
+flask --app wsgi sentinel migrate-history
+
+# Inspect canonical history or include superseded revisions
+flask --app wsgi sentinel history --limit 120
+flask --app wsgi sentinel history --limit 120 --include-revisions
+
+# Export summaries or full normalized lineage
+flask --app wsgi sentinel export-history \
+  --output /approved/path/score-history.csv \
+  --format csv
+flask --app wsgi sentinel export-history \
+  --output /approved/path/score-history.jsonl \
+  --format jsonl \
+  --include-lineage \
+  --include-revisions
+
 # Record FINRA debit balances, in USD millions
 flask --app wsgi sentinel set-margin-debt \
   --value 1000000 \
@@ -115,6 +136,38 @@ FINRA margin statistics are monthly and are intentionally entered as an audited 
 this MVP. This avoids pretending that a slow-moving monthly series is a live daily signal and avoids a
 fragile scraper. A future provider module can automate the monthly import while retaining the same data
 model.
+
+## Research history and reproducibility
+
+Every deterministic refresh is archived as a versioned `score_run`. Identical same-day inputs are
+idempotent; changed inputs create a new revision and preserve the earlier result. Each run stores:
+
+- score version, full ruleset, ruleset hash, and optional deployed commit SHA;
+- exact metric-input hash, source status, calculation timestamp, and data cutoff;
+- normalized indicator values, points, thresholds, source dates, and quality status;
+- canonical/superseded state and revision lineage;
+- separately versioned OpenAI commentary;
+- a schema for matured forward outcomes used only in later studies.
+
+The original `snapshots` table remains as the operational projection for dashboard and alert
+compatibility. The research tables are additive, so existing installations can upgrade with:
+
+```bash
+flask --app wsgi sentinel init-db
+flask --app wsgi sentinel migrate-history
+```
+
+History endpoints:
+
+```text
+GET /api/history?limit=60
+GET /api/history?limit=60&include_revisions=true
+GET /api/history?score_version=1.0.0
+GET /api/history/<score_run_id>
+```
+
+See [`docs/RESEARCH_HISTORY.md`](docs/RESEARCH_HISTORY.md) for the schema, revision semantics, export
+workflow, backup policy, methodology-version rules, and research cautions.
 
 ## Alert policy
 
@@ -137,7 +190,7 @@ forced selling, not proof that US contagion must follow.
 
 Use an external scheduler rather than APScheduler inside a multi-worker web process. For a Singapore
 morning workflow, run the daily CLI after the completed US session and after provider data has settled.
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for Docker, EC2, cron, and PostgreSQL notes.
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for Docker, EC2, cron, PostgreSQL, and backup notes.
 
 ## Data-source limitations
 
@@ -147,6 +200,7 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for Docker, EC2, cron, and Postgr
 - Sector ETF breadth is a transparent proxy, not the percentage of all S&P 500 constituents above
   their moving averages.
 - Margin debt/GDP is a slow structural measure and can remain high for a long time before a decline.
+- Stored vendor observations remain subject to provider licensing and retention restrictions.
 - No score can eliminate false positives, false negatives, model risk, or provider outages.
 
 ## Development
@@ -157,18 +211,20 @@ pytest --cov=market_sentinel --cov-report=term-missing
 ```
 
 The code is organized under `src/market_sentinel/`; data acquisition, indicator calculation, scoring,
-commentary, and delivery are separate services so providers and thresholds can be changed independently.
+history, commentary, and delivery are separate services so providers and thresholds can be changed
+independently.
 
 ## AI-Assisted Development
 
-This repository uses `prime_directive.md` as the main engineering guideline for human contributors and AI coding agents.
+This repository uses `prime_directive.md` as the main engineering guideline for human contributors and
+AI coding agents.
 
 Important supporting files:
 
-- `.github/copilot-instructions.md` — GitHub Copilot repository instructions
-- `AGENTS.md` — General AI agent instructions
-- `session_log.md` — AI-assisted development session log
-- `.github/pull_request_template.md` — PR checklist
+- `.github/copilot-instructions.md` - GitHub Copilot repository instructions
+- `AGENTS.md` - General AI agent instructions
+- `session_log.md` - AI-assisted development session log
+- `.github/pull_request_template.md` - PR checklist
 
 ### Development Rules
 

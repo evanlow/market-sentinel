@@ -1,21 +1,28 @@
 from __future__ import annotations
 
+import csv
 import json
+import os
+import tempfile
 from datetime import date
+from pathlib import Path
 
 import click
 from flask.cli import AppGroup
+from sqlalchemy import desc
 
 from .extensions import db
-from .models import ManualMetric, Snapshot
+from .models import ManualMetric, ScoreRun, Snapshot
+from .services.history import ResearchHistoryService
 from .services.orchestrator import SentinelOrchestrator
+from .services.risk import RiskEngine
 
 sentinel_cli = AppGroup("sentinel", help="Collect, score, and report market-risk data.")
 
 
 @sentinel_cli.command("init-db")
 def init_db():
-    """Create the database tables."""
+    """Create all operational and research-history database tables."""
     db.create_all()
     click.echo("Database tables created.")
 
@@ -23,7 +30,7 @@ def init_db():
 @sentinel_cli.command("refresh")
 @click.option("--no-ai", is_flag=True, help="Skip optional OpenAI commentary.")
 def refresh(no_ai: bool):
-    """Collect data and store one deterministic market-risk snapshot."""
+    """Collect data and store an operational snapshot plus immutable score run."""
     snapshot = SentinelOrchestrator().refresh(generate_commentary=not no_ai)
     click.echo(json.dumps(snapshot.to_dict(), indent=2))
 
@@ -45,8 +52,8 @@ def run_daily(no_ai: bool, force_email: bool, force_alert: bool):
 @sentinel_cli.command("send-daily")
 @click.option("--force", is_flag=True, help="Send even when DAILY_EMAIL_ENABLED is false.")
 def send_daily(force: bool):
-    """Send the latest stored snapshot as a daily email."""
-    snapshot = Snapshot.query.order_by(Snapshot.market_as_of.desc()).first()
+    """Send the latest stored non-demo snapshot as a daily email."""
+    snapshot = _latest_snapshot()
     if snapshot is None:
         raise click.ClickException("No snapshot is available. Run sentinel refresh first.")
     sent = SentinelOrchestrator().send_daily(snapshot, force=force)
@@ -56,8 +63,8 @@ def send_daily(force: bool):
 @sentinel_cli.command("evaluate-alert")
 @click.option("--force", is_flag=True, help="Send a test alert even when no rule fires.")
 def evaluate_alert(force: bool):
-    """Evaluate alert rules against the latest stored snapshot."""
-    snapshot = Snapshot.query.order_by(Snapshot.market_as_of.desc()).first()
+    """Evaluate alert rules against the latest stored non-demo snapshot."""
+    snapshot = _latest_snapshot()
     if snapshot is None:
         raise click.ClickException("No snapshot is available. Run sentinel refresh first.")
     event = SentinelOrchestrator().process_alert(snapshot, force=force)
@@ -65,6 +72,117 @@ def evaluate_alert(force: bool):
         click.echo("No alert was sent.")
     else:
         click.echo(f"Alert status: {event.status}; event id: {event.id}")
+
+
+@sentinel_cli.command("migrate-history")
+def migrate_history():
+    """Copy legacy snapshots into the additive research-history tables."""
+    service = ResearchHistoryService(RiskEngine())
+    created, reused = service.migrate_all_snapshots()
+    db.session.commit()
+    click.echo(f"History migration complete: {created} created, {reused} already present.")
+
+
+@sentinel_cli.command("history")
+@click.option("--limit", type=click.IntRange(1, 5000), default=60, show_default=True)
+@click.option("--include-revisions", is_flag=True, help="Include superseded revisions.")
+@click.option("--score-version", default=None, help="Filter by deterministic score version.")
+def history(limit: int, include_revisions: bool, score_version: str | None):
+    """Print stored score-run summaries as JSON."""
+    rows = _history_rows(
+        limit=limit,
+        include_revisions=include_revisions,
+        score_version=score_version,
+    )
+    click.echo(json.dumps([row.to_dict() for row in rows], indent=2))
+
+
+@sentinel_cli.command("export-history")
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path, dir_okay=False, resolve_path=True),
+    required=True,
+    help="Destination .jsonl or .csv file.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["jsonl", "csv"], case_sensitive=False),
+    required=True,
+)
+@click.option("--limit", type=click.IntRange(1, 5000), default=5000, show_default=True)
+@click.option("--include-revisions", is_flag=True, help="Include superseded revisions.")
+@click.option("--include-lineage", is_flag=True, help="Include normalized lineage in JSONL.")
+@click.option("--score-version", default=None, help="Filter by deterministic score version.")
+def export_history(
+    output: Path,
+    output_format: str,
+    limit: int,
+    include_revisions: bool,
+    include_lineage: bool,
+    score_version: str | None,
+):
+    """Atomically export score history for offline studies."""
+    if not output.parent.exists() or not output.parent.is_dir():
+        raise click.ClickException(f"Output directory does not exist: {output.parent}")
+    if output.exists() and output.is_dir():
+        raise click.ClickException("--output must be a file path")
+    if output_format == "csv" and include_lineage:
+        raise click.ClickException("--include-lineage is supported only with JSONL")
+
+    rows = _history_rows(
+        limit=limit,
+        include_revisions=include_revisions,
+        score_version=score_version,
+    )
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            if output_format == "jsonl":
+                for row in rows:
+                    payload = row.to_dict(include_lineage=include_lineage)
+                    handle.write(json.dumps(payload, sort_keys=True) + "\n")
+            else:
+                fieldnames = [
+                    "id",
+                    "market_as_of",
+                    "calculated_at",
+                    "data_cutoff_at",
+                    "score",
+                    "regime",
+                    "coverage",
+                    "score_change_1d",
+                    "score_change_3d",
+                    "score_version",
+                    "ruleset_hash",
+                    "input_hash",
+                    "code_commit_sha",
+                    "revision",
+                    "run_type",
+                    "is_canonical",
+                    "supersedes_run_id",
+                    "is_demo",
+                    "ai_summary",
+                ]
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow(row.to_dict())
+        os.replace(temporary_path, output)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+    click.echo(f"Exported {len(rows)} score runs to {output}.")
 
 
 @sentinel_cli.command("set-margin-debt")
@@ -146,5 +264,37 @@ def seed_demo():
         "must not be used for decisions."
     )
     snapshot.is_demo = True
+    db.session.flush()
+    ResearchHistoryService(RiskEngine()).migrate_snapshot(
+        snapshot,
+        run_type="simulation",
+    )
     db.session.commit()
     click.echo("Demo snapshot inserted with the future date 2099-01-01.")
+
+
+def _latest_snapshot() -> Snapshot | None:
+    snapshot = Snapshot.query.filter_by(is_demo=False).order_by(desc(Snapshot.market_as_of)).first()
+    if snapshot is not None:
+        return snapshot
+    return Snapshot.query.order_by(desc(Snapshot.market_as_of)).first()
+
+
+def _history_rows(
+    *,
+    limit: int,
+    include_revisions: bool,
+    score_version: str | None,
+) -> list[ScoreRun]:
+    query = ScoreRun.query.filter(ScoreRun.is_demo.is_(False))
+    if not include_revisions:
+        query = query.filter(ScoreRun.is_canonical.is_(True))
+    if score_version:
+        query = query.filter(ScoreRun.score_version == score_version.strip())
+    rows = (
+        query.order_by(desc(ScoreRun.market_as_of), desc(ScoreRun.revision))
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return rows
