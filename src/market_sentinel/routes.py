@@ -8,6 +8,7 @@ from sqlalchemy import desc, text
 
 from .extensions import db
 from .models import ScoreRun, Snapshot
+from .services.risk import RiskEngine
 
 bp = Blueprint("main", __name__)
 
@@ -18,17 +19,24 @@ def dashboard():
     if latest is None:
         latest = Snapshot.query.order_by(desc(Snapshot.market_as_of)).first()
 
+    history_is_demo = latest.is_demo if latest is not None else False
     history = (
-        ScoreRun.query.filter_by(is_canonical=True, is_demo=False)
+        ScoreRun.query.filter_by(
+            is_canonical=True,
+            is_demo=history_is_demo,
+            score_version=RiskEngine.SCORE_VERSION,
+        )
         .order_by(desc(ScoreRun.market_as_of))
         .limit(60)
         .all()
     )
     if not history:
-        history_query = Snapshot.query.filter_by(is_demo=False)
-        if latest is not None and latest.is_demo:
-            history_query = Snapshot.query
-        history = history_query.order_by(desc(Snapshot.market_as_of)).limit(60).all()
+        history = (
+            Snapshot.query.filter_by(is_demo=history_is_demo)
+            .order_by(desc(Snapshot.market_as_of))
+            .limit(60)
+            .all()
+        )
     history.reverse()
 
     categories = defaultdict(list)
@@ -60,6 +68,7 @@ def api_status():
     research_run = (
         ScoreRun.query.filter_by(
             market_as_of=latest.market_as_of,
+            score_version=RiskEngine.SCORE_VERSION,
             is_canonical=True,
             is_demo=latest.is_demo,
         )
