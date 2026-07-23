@@ -1,5 +1,8 @@
 # Deployment notes
 
+> [!NOTE]
+> For a complete, user-friendly AWS walkthrough covering IAM, security groups, Ubuntu EC2, Docker, private RDS PostgreSQL, ALB, ACM, Route 53, scheduling, backups, upgrades, and troubleshooting, use [`DEPLOY.md`](../DEPLOY.md). This file remains a concise operational reference.
+
 ## Docker on an EC2 host
 
 1. Install Docker and Docker Compose.
