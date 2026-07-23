@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from flask import current_app, render_template
@@ -91,7 +91,7 @@ class SentinelOrchestrator:
             snapshot = Snapshot(market_as_of=market_as_of)
             db.session.add(snapshot)
 
-        snapshot.captured_at = datetime.now(timezone.utc)
+        snapshot.captured_at = datetime.now(UTC)
         snapshot.score = assessment.score
         snapshot.regime = assessment.regime
         snapshot.coverage = assessment.coverage
@@ -139,7 +139,7 @@ class SentinelOrchestrator:
         if existing is not None:
             return existing
 
-        cutoff = datetime.now(timezone.utc) - timedelta(
+        cutoff = datetime.now(UTC) - timedelta(
             hours=current_app.config["ALERT_COOLDOWN_HOURS"]
         )
         recent = (
@@ -185,7 +185,7 @@ class SentinelOrchestrator:
             recipients=recipients,
             provider_id=result.provider_id,
             error=result.error,
-            sent_at=datetime.now(timezone.utc) if result.success else None,
+            sent_at=datetime.now(UTC) if result.success else None,
         )
         db.session.add(event)
         db.session.commit()
