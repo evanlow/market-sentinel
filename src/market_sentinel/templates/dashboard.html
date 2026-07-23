@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Market Sentinel Dashboard{% endblock %}
+{% block content %}
+{% if not latest %}
+<section class="card notice">
+  <h2>No market snapshot yet</h2>
+  <p>Initialize the database and collect the first snapshot:</p>
+  <pre>flask --app wsgi sentinel init-db
+flask --app wsgi sentinel refresh</pre>
+</section>
+{% else %}
+{% if latest.is_demo %}
+<section class="card demo">
+  <strong>Demonstration data:</strong> this snapshot is synthetic and must not be used operationally.
+</section>
+{% endif %}
+<section class="grid summary-grid">
+  <article class="card">
+    <div class="kicker">Market Stress Score</div>
+    <div class="score">{{ latest.score }}<span class="muted">/100</span></div>
+  </article>
+  <article class="card">
+    <div class="kicker">Risk regime</div>
+    <p><span class="regime regime-{{ latest.regime }}">{{ latest.regime }}</span></p>
+  </article>
+  <article class="card">
+    <div class="kicker">Data coverage</div>
+    <div class="score">{{ "%.0f"|format(latest.coverage * 100) }}<span class="muted">%</span></div>
+  </article>
+  <article class="card">
+    <div class="kicker">Market date</div>
+    <h2>{{ latest.market_as_of.isoformat() }}</h2>
+    <div class="muted">1-day change: {{ "%+.0f"|format(latest.score_change_1d) if latest.score_change_1d is not none else "n/a" }}</div>
+    <div class="muted">3-day change: {{ "%+.0f"|format(latest.score_change_3d) if latest.score_change_3d is not none else "n/a" }}</div>
+  </article>
+</section>
+
+<section class="card section">
+  <h2>Score history</h2>
+  <canvas id="scoreChart" height="90"></canvas>
+</section>
+
+{% if latest.ai_summary %}
+<section class="card section">
+  <h2>AI-assisted interpretation</h2>
+  <p>{{ latest.ai_summary }}</p>
+  <p class="muted">The model explains deterministic inputs; it does not set or override the score.</p>
+</section>
+{% endif %}
+
+<section class="card section">
+  <h2>Critical trigger checklist</h2>
+  {% for trigger in latest.triggers %}
+    <div class="trigger {{ 'trigger-active' if trigger.active else '' }}">
+      {{ '●' if trigger.active else '○' }} {{ trigger.label }}
+    </div>
+  {% endfor %}
+</section>
+
+{% for category, indicators in categories.items() %}
+<section class="card section">
+  <h2>{{ category }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Indicator</th><th>Current</th><th>Status</th><th>Risk points</th><th>As of</th></tr>
+      </thead>
+      <tbody>
+      {% for item in indicators %}
+        <tr>
+          <td>
+            <strong>{{ item.label }}</strong><br>
+            <span class="muted">{{ item.description }}</span>
+            {% if item.detail %}<br><span class="muted">{{ item.detail }}</span>{% endif %}
+          </td>
+          <td>{{ item.display_value }}</td>
+          <td class="status status-{{ item.status }}">{{ item.status }}</td>
+          <td class="points">{{ item.points }} / {{ item.max_points }}</td>
+          <td>{{ item.as_of or 'n/a' }}<br><span class="muted">{{ item.source }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+
+<details class="card section">
+  <summary>Data-source diagnostics</summary>
+  <pre>{{ latest.source_status | tojson(indent=2) }}</pre>
+</details>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if latest %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+  const chartData = {{ chart | tojson }};
+  new Chart(document.getElementById('scoreChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.labels,
+      datasets: [{ label: 'Risk score', data: chartData.scores, borderWidth: 2, tension: 0.2 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { min: 0, max: 100 } }
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

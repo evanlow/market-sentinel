@@ -1,0 +1,10 @@
+<!doctype html><html><body style="font-family:Arial,sans-serif;color:#222;line-height:1.5">
+<h1 style="color:#b42318">{{ severity|upper }} ALERT</h1>
+<p><strong>Market Sentinel score: {{ snapshot.score }}/100</strong><br>
+Market date: {{ snapshot.market_as_of.isoformat() }}<br>
+Data coverage: {{ "%.0f"|format(snapshot.coverage * 100) }}%</p>
+<h2>Why this alert fired</h2>
+<ul>{% for reason in reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+{% if snapshot.ai_summary %}<h2>Context</h2><p>{{ snapshot.ai_summary }}</p>{% endif %}
+<hr><small>This alert reports rule-based market stress. It is not investment advice or a guarantee that a crash will occur.</small>
+</body></html>

@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-sentinel"
+version = "0.1.0"
+description = "AI-assisted US market risk monitoring and alerting dashboard"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Market Sentinel contributors" }
+]
+dependencies = [
+  "Flask>=3.1,<4",
+  "Flask-SQLAlchemy>=3.1,<4",
+  "gunicorn>=23,<24",
+  "openai>=2.0,<3",
+  "pandas>=2.2,<3",
+  "psycopg[binary]>=3.2,<4",
+  "python-dotenv>=1.0,<2",
+  "requests>=2.32,<3",
+  "yfinance>=0.2.50,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.11,<1",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+market_sentinel = [
+  "templates/**/*.html",
+  "static/*.css",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]

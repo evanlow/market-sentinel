@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - sentinel-data:/data
+    restart: unless-stopped
+
+volumes:
+  sentinel-data:

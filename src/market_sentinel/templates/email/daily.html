@@ -1,0 +1,15 @@
+<!doctype html><html><body style="font-family:Arial,sans-serif;color:#222;line-height:1.5">
+<h1>Market Sentinel Daily</h1>
+<p><strong>{{ snapshot.regime|upper }} — {{ snapshot.score }}/100</strong></p>
+<p>Market date: {{ snapshot.market_as_of.isoformat() }}<br>
+Data coverage: {{ "%.0f"|format(snapshot.coverage * 100) }}%<br>
+One-day score change: {{ "%+.0f"|format(snapshot.score_change_1d) if snapshot.score_change_1d is not none else "n/a" }}<br>
+Three-day score change: {{ "%+.0f"|format(snapshot.score_change_3d) if snapshot.score_change_3d is not none else "n/a" }}</p>
+<h2>Active critical triggers</h2>
+{% set active = snapshot.triggers | selectattr('active') | list %}
+{% if active %}<ul>{% for trigger in active %}<li>{{ trigger.label }}</li>{% endfor %}</ul>{% else %}<p>None.</p>{% endif %}
+<h2>Highest-scoring indicators</h2>
+<ul>{% for item in snapshot.indicators | sort(attribute='points', reverse=true) %}{% if item.points > 0 %}<li><strong>{{ item.label }}:</strong> {{ item.display_value }} — {{ item.points }}/{{ item.max_points }}</li>{% endif %}{% endfor %}</ul>
+{% if snapshot.ai_summary %}<h2>AI-assisted interpretation</h2><p>{{ snapshot.ai_summary }}</p>{% endif %}
+<hr><small>This is an informational monitoring tool, not investment advice or a guaranteed crash-prediction system.</small>
+</body></html>
