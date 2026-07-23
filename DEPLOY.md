@@ -8,13 +8,34 @@ The recommended deployment uses:
 - **AWS Certificate Manager (ACM)** for a managed TLS certificate;
 - **Application Load Balancer (ALB)** for HTTPS termination and health checks;
 - **Amazon EC2** running Ubuntu and Docker Compose;
-- **Amazon RDS for PostgreSQL** for persistent application and research history;
-- **AWS Systems Manager Session Manager** for administrative access without exposing SSH;
-- **Amazon S3** for optional versioned research exports and backup artifacts;
+- **Amazon RDS for PostgreSQL** for persistent operational and research history;
+- **AWS Systems Manager Session Manager** for administration without publicly exposing SSH;
+- **Amazon S3** for optional versioned research exports;
 - a host **cron job** for the daily Market Sentinel run.
 
 > [!IMPORTANT]
 > Market Sentinel is a risk-monitoring application, not a crash-prediction or investment-advice system. Deployment does not remove data-provider limitations, false positives, false negatives, or model risk.
+
+---
+
+## Table of contents
+
+1. [Deployment outcome](#1-deployment-outcome)
+2. [Recommended sizing and cost awareness](#2-recommended-sizing-and-cost-awareness)
+3. [Prerequisites and deployment worksheet](#3-prerequisites-and-deployment-worksheet)
+4. [Prepare networking and IAM](#part-i---prepare-networking-and-iam)
+5. [Launch and prepare EC2](#part-ii---launch-and-prepare-ec2)
+6. [Create RDS PostgreSQL](#part-iii---create-rds-postgresql)
+7. [Configure and start Market Sentinel](#part-iv---configure-and-start-market-sentinel)
+8. [Configure HTTPS, ALB, and Route 53](#part-v---configure-https-alb-and-route-53)
+9. [Enable OpenAI and Mailgun](#part-vi---enable-optional-integrations)
+10. [Schedule the daily run](#part-vii---schedule-the-daily-run)
+11. [Backups and research retention](#part-viii---backups-and-research-retention)
+12. [Monitoring and operations](#part-ix---monitoring-and-operations)
+13. [Safe upgrades and rollback](#part-x---safe-upgrades-and-rollback)
+14. [Troubleshooting](#part-xi---troubleshooting)
+15. [Security and final checklists](#part-xii---security-and-final-checklists)
+16. [Lower-cost and advanced alternatives](#appendices)
 
 ---
 
@@ -49,11 +70,11 @@ Private RDS PostgreSQL
 - automated backups enabled
 ```
 
-The application itself continues to listen on port `8000` inside the VPC. Only the ALB is publicly reachable on ports `80` and `443`.
+The application listens on port `8000` inside the VPC. Only the ALB is publicly reachable on ports `80` and `443`.
 
 ---
 
-## 2. Recommended sizing
+## 2. Recommended sizing and cost awareness
 
 The following is a practical starting point for a personal or small-team deployment.
 
@@ -75,15 +96,10 @@ A `t3.micro` can work for light experimentation, but 1 GiB of memory can be unco
 > [!NOTE]
 > AWS instance classes, free-tier eligibility, prices, and console wording can change. Use the current AWS console and AWS Pricing Calculator before provisioning.
 
----
-
-## 3. Cost awareness
-
-The following resources normally incur ongoing charges:
+Resources that normally incur ongoing charges include:
 
 - Application Load Balancer;
-- EC2 instance and EBS volume;
-- public IPv4 address attached to EC2;
+- EC2 instance, public IPv4 address, and EBS storage;
 - RDS instance, storage, backups beyond included allowances, and data transfer;
 - Route 53 hosted zone and DNS queries;
 - S3 storage and requests;
@@ -93,9 +109,11 @@ For a temporary demonstration, see [Appendix A: Lower-cost single-EC2 deployment
 
 ---
 
-## 4. Prerequisites
+## 3. Prerequisites and deployment worksheet
 
-Before starting, prepare the following:
+### Prerequisites
+
+Prepare the following before starting:
 
 - an AWS account with MFA enabled;
 - permission to create IAM, EC2, RDS, ELB, ACM, Route 53, and optionally S3 resources;
@@ -115,11 +133,7 @@ Do not paste secrets into:
 - shell commands that will remain in command history;
 - application logs.
 
----
-
-## 5. Fill in the deployment worksheet
-
-Choose your values before provisioning resources.
+### Deployment worksheet
 
 | Item | Example | Your value |
 |---|---|---|
@@ -137,7 +151,7 @@ Choose your values before provisioning resources.
 | PostgreSQL user | `market_sentinel_admin` | |
 | Optional S3 bucket | `your-account-market-sentinel-backups` | |
 
-The examples in this guide use:
+Examples in this guide use:
 
 ```text
 AWS Region: ap-southeast-1
@@ -145,28 +159,29 @@ Domain: sentinel.example.com
 Application directory: /opt/market-sentinel
 Container port: 8000
 PostgreSQL port: 5432
+Linux application user: ubuntu
 ```
 
-Replace example values with your own values.
+Replace all example values with your own values.
 
 ---
 
-# Part I - Prepare AWS networking and access
+# Part I - Prepare networking and IAM
 
-## 6. Choose the VPC approach
+## 4. Choose the VPC approach
 
 ### Approach 1: Existing or default VPC
 
 This is the simplest first deployment.
 
-Confirm that the VPC has:
+Confirm the VPC has:
 
 - at least two subnets in different Availability Zones for the ALB;
 - an internet gateway;
 - a route to the internet from the subnets used by the ALB;
 - DNS resolution and DNS hostnames enabled.
 
-The EC2 instance can be placed in one public subnet with a public IPv4 address for outbound access. RDS must be set to **Public access: No**.
+The EC2 instance can be placed in a public subnet with a public IPv4 address for outbound access. RDS must be set to **Public access: No**.
 
 ### Approach 2: Dedicated production VPC
 
@@ -177,21 +192,22 @@ A more isolated design uses:
 - two private database subnets for RDS;
 - separate route tables by tier.
 
-This guide works for either design. The most important rules are:
+The critical rules are:
 
 1. ALB, EC2, and RDS must be in the same VPC unless you intentionally design cross-VPC connectivity.
 2. RDS should not be publicly accessible.
 3. Security groups should reference one another instead of allowing broad public access.
+4. An EC2 instance in a private subnet needs NAT or suitable VPC endpoints for package downloads and external APIs.
 
 ---
 
-## 7. Create the three security groups
+## 5. Create the three security groups
 
 Open **AWS Console -> EC2 -> Network & Security -> Security Groups**.
 
-Create all three groups in the same VPC.
+Create the following groups in the same VPC.
 
-### 7.1 ALB security group
+### 5.1 ALB security group
 
 Name:
 
@@ -210,10 +226,10 @@ Inbound rules:
 
 Outbound rule:
 
-- TCP `8000` to `market-sentinel-ec2-sg` if your console permits selecting the EC2 security group as the destination; or
+- TCP `8000` to `market-sentinel-ec2-sg` when your console permits selecting the EC2 security group as the destination; or
 - temporarily retain the default outbound rule and tighten it after the target is healthy.
 
-### 7.2 EC2 application security group
+### 5.2 EC2 application security group
 
 Name:
 
@@ -221,7 +237,7 @@ Name:
 market-sentinel-ec2-sg
 ```
 
-Inbound rules:
+Inbound rule:
 
 | Type | Port | Source | Purpose |
 |---|---:|---|---|
@@ -234,9 +250,9 @@ Administrative access options:
 - **Recommended:** use Systems Manager Session Manager and do not add port `22`.
 - **Fallback:** add SSH port `22` from **My IP** only, never from the whole internet.
 
-For the initial deployment, leaving the default outbound rule is simplest because the application needs outbound HTTPS access to market-data providers, FRED, OpenAI, Mailgun, GitHub, Docker registries, and Ubuntu repositories.
+For the initial deployment, retaining the default outbound rule is simplest because the application needs outbound HTTPS access to market-data providers, FRED, OpenAI, Mailgun, GitHub, Docker registries, and Ubuntu repositories.
 
-### 7.3 RDS security group
+### 5.3 RDS security group
 
 Name:
 
@@ -254,7 +270,7 @@ Do not add your home IP or `0.0.0.0/0` unless you deliberately need temporary da
 
 ---
 
-## 8. Create an EC2 IAM role
+## 6. Create an EC2 IAM role
 
 Systems Manager lets you administer EC2 without opening SSH to the internet.
 
@@ -276,7 +292,7 @@ MarketSentinelEC2Role
 
 5. Create the role.
 
-Later, attach this role to the EC2 instance.
+Attach this role to the EC2 instance during launch.
 
 ### Optional S3 backup permission
 
@@ -316,11 +332,11 @@ Do not grant `s3:*` across all buckets.
 
 # Part II - Launch and prepare EC2
 
-## 9. Launch the EC2 instance
+## 7. Launch the EC2 instance
 
 Open **EC2 -> Instances -> Launch instances**.
 
-### 9.1 Name and operating system
+### Name and operating system
 
 Name:
 
@@ -334,7 +350,7 @@ Choose:
 Ubuntu Server 24.04 LTS, 64-bit (x86)
 ```
 
-### 9.2 Instance type
+### Instance type
 
 Recommended starting point:
 
@@ -342,33 +358,31 @@ Recommended starting point:
 t3.small
 ```
 
-A smaller instance may be used for a short demonstration, but monitor memory and build reliability.
+### Key pair
 
-### 9.3 Key pair
-
-When using Session Manager only, a key pair is not technically required. Keeping a securely stored recovery key pair can still be useful.
+When using Session Manager only, a key pair is not technically required. A securely stored recovery key can still be useful.
 
 When using PuTTY:
 
 - create or select a key pair;
 - download the private key once;
-- convert a `.pem` file to `.ppk` with PuTTYgen when required;
+- convert `.pem` to `.ppk` with PuTTYgen when required;
 - never email or commit the private key.
 
-### 9.4 Network settings
+### Network settings
 
 Select:
 
-- the selected VPC;
+- the chosen VPC;
 - a subnet with outbound internet access;
 - **Auto-assign public IP: Enable** for the simple public-subnet design;
 - existing security group: `market-sentinel-ec2-sg`.
 
-The public IP is for outbound connectivity and administration. Application users will access the ALB, not the EC2 public IP.
+Users will access the ALB, not the EC2 public IP.
 
-An Elastic IP is optional. It is not needed for the public application endpoint when Route 53 points to the ALB.
+An Elastic IP is optional. It is not required for the public application endpoint when Route 53 points to the ALB.
 
-### 9.5 Storage
+### Storage
 
 Configure approximately:
 
@@ -376,9 +390,9 @@ Configure approximately:
 30 GiB gp3, encrypted
 ```
 
-Enable delete-on-termination only when your backup and recovery plan is understood.
+Understand the backup implications before enabling delete-on-termination.
 
-### 9.6 Advanced details
+### Advanced details
 
 Select IAM instance profile:
 
@@ -388,7 +402,7 @@ MarketSentinelEC2Role
 
 Do not place API keys or passwords in EC2 user data.
 
-### 9.7 Tags
+### Tags
 
 Suggested tags:
 
@@ -402,7 +416,7 @@ Launch the instance and wait for both EC2 status checks to pass.
 
 ---
 
-## 10. Connect to EC2
+## 8. Connect to EC2 and standardize the shell user
 
 ### Recommended: Systems Manager Session Manager
 
@@ -414,22 +428,45 @@ EC2 -> Instances -> market-sentinel-app -> Connect -> Session Manager
 
 Choose **Connect**.
 
-If Session Manager is unavailable, check:
+Session Manager commonly opens as `ssm-user`. This guide standardizes all application files and scheduled jobs under the Ubuntu AMI user `ubuntu`.
 
-- the IAM role is attached;
-- the instance has outbound HTTPS access;
-- the SSM agent is installed and running;
-- the instance and Systems Manager are in the same AWS Region view.
+Check the current user:
 
-### Fallback: SSH
+```bash
+whoami
+```
 
-Ubuntu uses the username:
+When the result is not `ubuntu`, switch to the Ubuntu user:
+
+```bash
+sudo -iu ubuntu
+whoami
+```
+
+The second command should return:
 
 ```text
 ubuntu
 ```
 
-Example OpenSSH command:
+Run the remaining host commands in this guide as `ubuntu`, using `sudo` only where shown.
+
+If Session Manager is unavailable, check:
+
+- the IAM role is attached;
+- the instance has outbound HTTPS access;
+- the SSM agent is installed and running;
+- the instance and Systems Manager console are in the same AWS Region.
+
+### Fallback: SSH
+
+Ubuntu uses username:
+
+```text
+ubuntu
+```
+
+Example:
 
 ```bash
 ssh -i /safe/path/market-sentinel.pem ubuntu@EC2_PUBLIC_IP
@@ -441,7 +478,7 @@ Restrict the SSH security-group rule to your current public IP.
 
 ---
 
-## 11. Update Ubuntu and set the timezone
+## 9. Update Ubuntu and set the timezone
 
 Run:
 
@@ -464,19 +501,19 @@ date
 timedatectl
 ```
 
-Use a different IANA timezone when the operator is not in Singapore.
+Use another IANA timezone when appropriate.
 
-Reboot when Ubuntu reports that a restart is required:
+Reboot only when Ubuntu reports a restart is required:
 
 ```bash
 sudo reboot
 ```
 
-Reconnect after the instance returns to the running state.
+Reconnect and switch back to `ubuntu` when using Session Manager.
 
 ---
 
-## 12. Install Docker Engine and Docker Compose
+## 10. Install Docker Engine and Docker Compose
 
 Use Docker's official Ubuntu repository rather than the older distribution package.
 
@@ -527,27 +564,30 @@ sudo docker run --rm hello-world
 sudo docker compose version
 ```
 
-Allow the `ubuntu` user to run Docker:
+Allow `ubuntu` to run Docker:
 
 ```bash
 sudo usermod -aG docker ubuntu
 ```
 
-End the session and reconnect so the group membership is refreshed.
+End the session and reconnect so group membership is refreshed. When using Session Manager, switch again with `sudo -iu ubuntu`.
 
-Then verify without `sudo`:
+Verify without `sudo`:
 
 ```bash
+id
 docker version
 docker compose version
 ```
 
+The `id` output should include the `docker` group.
+
 > [!CAUTION]
-> Membership in the Docker group grants powerful host-level capabilities. Limit administrative access to trusted operators.
+> Docker group membership grants powerful host-level capabilities. Limit administrative access to trusted operators.
 
 ---
 
-## 13. Clone Market Sentinel
+## 11. Clone Market Sentinel
 
 Create the application directory:
 
@@ -563,7 +603,7 @@ git clone https://github.com/evanlow/market-sentinel.git /opt/market-sentinel
 cd /opt/market-sentinel
 ```
 
-Verify the branch and commit:
+Verify:
 
 ```bash
 git status
@@ -571,17 +611,17 @@ git branch --show-current
 git log -1 --oneline
 ```
 
-The production deployment should normally use the `main` branch after the desired pull requests have been reviewed and merged.
+Production should normally use `main` after the desired pull requests have been reviewed and merged.
 
 ---
 
-# Part III - Create PostgreSQL on Amazon RDS
+# Part III - Create RDS PostgreSQL
 
-## 14. Create the RDS PostgreSQL database
+## 12. Create the database
 
 Open **RDS -> Databases -> Create database**.
 
-### 14.1 Creation method and engine
+### Creation method and engine
 
 Choose:
 
@@ -589,18 +629,18 @@ Choose:
 - engine: **PostgreSQL**;
 - a currently supported PostgreSQL major version.
 
-Do not select an engine version solely because it is the newest. Confirm that it is generally available in your Region and supported by your operational policy.
+Confirm the selected version is generally available in your Region and compatible with your maintenance policy.
 
-### 14.2 Template
+### Template
 
 Choose:
 
 - **Dev/Test** or the smallest eligible option for a demonstration;
 - **Production** for a production-critical deployment.
 
-### 14.3 Settings
+### Settings
 
-DB instance identifier:
+DB identifier:
 
 ```text
 market-sentinel-db
@@ -612,37 +652,37 @@ Master username:
 market_sentinel_admin
 ```
 
-Generate a strong password and store it in a password manager. Do not put it into GitHub or resource tags.
+Generate a strong password and store it in a password manager.
 
-### 14.4 Availability and durability
+### Availability and durability
 
 - Single-AZ is sufficient for a personal MVP.
 - Multi-AZ is recommended when database availability is business-critical.
 
-### 14.5 Instance and storage
+### Instance and storage
 
 Choose a small instance class suitable for the workload.
 
-Suggested initial storage:
+Suggested starting storage:
 
 ```text
 20 GiB gp3, encrypted
 ```
 
-Enable storage autoscaling and choose a sensible maximum.
+Enable storage autoscaling and select a sensible maximum.
 
-### 14.6 Connectivity
+### Connectivity
 
 Configure:
 
-- VPC: the same VPC as EC2;
+- VPC: same VPC as EC2;
 - public access: **No**;
 - VPC security group: `market-sentinel-rds-sg`;
-- database port: `5432`.
+- port: `5432`.
 
-If the console offers **Connect to an EC2 compute resource**, selecting the Market Sentinel EC2 instance can automatically configure connectivity. Review the resulting security groups and make sure the effective rule remains PostgreSQL `5432` from the EC2 security group only.
+If the console offers **Connect to an EC2 compute resource**, selecting the Market Sentinel EC2 instance can automatically configure connectivity. Review the resulting security groups and ensure the effective rule remains PostgreSQL `5432` from the EC2 security group only.
 
-### 14.7 Additional configuration
+### Additional configuration
 
 Initial database name:
 
@@ -653,30 +693,24 @@ market_sentinel
 Recommended settings:
 
 - automated backups enabled;
-- retention: at least 7 days for an MVP, longer when required;
-- deletion protection enabled for production;
-- automatic minor-version upgrades according to your maintenance policy;
-- Performance Insights or Enhanced Monitoring when operationally useful;
+- retention of at least 7 days for an MVP, longer when required;
+- deletion protection for production;
+- automatic minor-version upgrades according to policy;
+- Performance Insights or Enhanced Monitoring when useful;
 - CloudWatch log exports when needed.
 
-Create the database and wait until its status is **Available**.
+Create the database and wait until status is **Available**.
 
 ---
 
-## 15. Record the RDS endpoint
+## 13. Record the endpoint and test connectivity
 
-Open the database and choose **Connectivity & security**.
-
-Copy:
+Open the database's **Connectivity & security** page and copy:
 
 - endpoint, for example `market-sentinel-db.xxxxxxxxx.ap-southeast-1.rds.amazonaws.com`;
 - port `5432`.
 
 The endpoint is a DNS name. Do not substitute an IP address.
-
----
-
-## 16. Test RDS connectivity from EC2
 
 On EC2, install the PostgreSQL client:
 
@@ -684,7 +718,7 @@ On EC2, install the PostgreSQL client:
 sudo apt-get install -y postgresql-client
 ```
 
-Connect without putting the password into shell history:
+Connect without placing the password in shell history:
 
 ```bash
 psql \
@@ -693,7 +727,7 @@ psql \
 
 Enter the password at the prompt.
 
-Inside `psql`, run:
+Inside `psql`:
 
 ```sql
 SELECT current_database(), current_user, version();
@@ -705,13 +739,13 @@ Exit:
 \q
 ```
 
-If the connection times out, check the RDS security group, EC2 security group, VPC, and route tables before changing the application.
+If the connection times out, check networking and security groups before changing application code.
 
 ---
 
 # Part IV - Configure and start Market Sentinel
 
-## 17. Create the production environment file
+## 14. Create the production `.env`
 
 Go to the repository:
 
@@ -719,7 +753,7 @@ Go to the repository:
 cd /opt/market-sentinel
 ```
 
-Create `.env` securely:
+Create the environment file securely:
 
 ```bash
 umask 077
@@ -739,7 +773,7 @@ Record the deployed Git commit:
 git rev-parse HEAD
 ```
 
-Open the file:
+Open the environment file:
 
 ```bash
 nano .env
@@ -782,7 +816,7 @@ ALERT_COOLDOWN_HOURS=18
 HISTORY_API_MAX_LIMIT=5000
 ```
 
-### 17.1 URL-encode the database password
+### URL-encode the database password
 
 Special characters in the PostgreSQL password must be URL-encoded in `DATABASE_URL`.
 
@@ -799,9 +833,9 @@ PY
 
 Paste the encoded output into `DATABASE_URL`.
 
-### 17.2 Start with optional integrations disabled
+### Start with integrations disabled
 
-For the first deployment, keep:
+Initially retain:
 
 ```dotenv
 OPENAI_ENABLED=false
@@ -809,9 +843,9 @@ DAILY_EMAIL_ENABLED=false
 ALERTS_ENABLED=false
 ```
 
-First prove that market collection, scoring, persistence, the dashboard, and RDS work. Enable optional services one at a time afterward.
+First prove that collection, scoring, persistence, dashboard, and RDS work. Enable optional services one at a time later.
 
-### 17.3 Recheck file permissions
+Verify permissions:
 
 ```bash
 ls -l .env
@@ -821,124 +855,86 @@ The file should not be readable by other users.
 
 ---
 
-## 18. Validate the Compose configuration
+## 15. Validate and build the Compose application
 
-Run:
+Validate without printing resolved secrets to the terminal:
 
 ```bash
 cd /opt/market-sentinel
-docker compose config
+docker compose config >/dev/null && echo "Compose configuration is valid."
 ```
 
-Review the output for:
-
-- the `web` service;
-- port mapping `8000:8000`;
-- the expected environment variables;
-- no unexpected paths.
-
-`docker compose config` can display resolved environment values. Do not paste its output into tickets, screenshots, or chat messages because it may contain secrets.
-
----
-
-## 19. Build the Docker image
+Build:
 
 ```bash
-cd /opt/market-sentinel
 docker compose build --pull
 ```
 
 The first build can take several minutes.
 
-Verify that the image exists:
-
-```bash
-docker images | head
-```
-
 ---
 
-## 20. Initialize the database
+## 16. Initialize the database
 
-Create the operational and research-history tables:
+Create operational and research-history tables:
 
 ```bash
 docker compose run --rm web \
   flask --app wsgi sentinel init-db
 ```
 
-For an existing installation containing legacy `snapshots`, run the idempotent migration:
+For an existing installation with legacy `snapshots`, run the idempotent migration:
 
 ```bash
 docker compose run --rm web \
   flask --app wsgi sentinel migrate-history
 ```
 
-On a brand-new database, the migration can safely report zero migrated rows.
+On a new database, migration can safely report zero migrated rows.
 
 ---
 
-## 21. Start the application
+## 17. Start and test the application
+
+Start:
 
 ```bash
 docker compose up -d
 ```
 
-Check container status:
+Check status and logs:
 
 ```bash
 docker compose ps
-```
-
-Check logs:
-
-```bash
 docker compose logs --tail=100 web
 ```
 
-Follow logs live when troubleshooting:
-
-```bash
-docker compose logs -f web
-```
-
-Exit live logs with `Ctrl+C`; this does not stop the container.
-
----
-
-## 22. Test the application on EC2
-
-Health check:
+Local health check:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/healthz
 ```
 
-Expected response:
+Expected:
 
 ```json
 {"status":"ok"}
 ```
 
-Test the dashboard headers:
+Test the dashboard and API:
 
 ```bash
 curl -I http://127.0.0.1:8000/
-```
-
-Test the current status API:
-
-```bash
 curl -fsS http://127.0.0.1:8000/api/status
 ```
 
-A fresh deployment may return a no-data response until the first refresh is completed.
+A new deployment may return a no-data response until the first refresh.
 
-Do not open EC2 port `8000` publicly just to perform this test. Test locally on the host.
+Do not open port `8000` publicly to perform these tests.
 
 ---
 
-## 23. Run the first market refresh
+## 18. Run the first refresh
 
 Run without OpenAI first:
 
@@ -947,7 +943,7 @@ docker compose run --rm web \
   flask --app wsgi sentinel refresh --no-ai
 ```
 
-Then check:
+Check status:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/api/status
@@ -960,13 +956,11 @@ docker compose run --rm web \
   flask --app wsgi sentinel history --limit 10
 ```
 
-If FRED is not configured, the application can still calculate available market indicators, but data coverage will be reduced.
+A missing FRED key reduces coverage but does not prevent all available indicators from being calculated.
 
 ---
 
-## 24. Optionally enter FINRA margin debt
-
-FINRA margin debt is monthly and is stored as an auditable manual observation.
+## 19. Optionally enter FINRA margin debt
 
 Example:
 
@@ -979,15 +973,13 @@ docker compose run --rm web \
   --notes "Entered from the FINRA monthly margin statistics release"
 ```
 
-Replace the value and date with the actual published observation.
-
-Run another refresh after updating the monthly value.
+Replace the value and date with the actual published observation, then run another refresh.
 
 ---
 
-# Part V - Put the application behind HTTPS
+# Part V - Configure HTTPS, ALB, and Route 53
 
-## 25. Create the ALB target group
+## 20. Create the target group
 
 Open **EC2 -> Load Balancing -> Target Groups -> Create target group**.
 
@@ -1003,7 +995,7 @@ Configure:
 | VPC | Same VPC as EC2 |
 | Protocol version | HTTP1 |
 
-Health check settings:
+Health check:
 
 | Setting | Value |
 |---|---|
@@ -1016,21 +1008,17 @@ Health check settings:
 | Timeout | 5 seconds |
 | Interval | 30 seconds |
 
-Register the `market-sentinel-app` EC2 instance on port `8000`.
-
-Wait for the target to become **Healthy**.
-
-If it remains unhealthy, see [Troubleshooting ALB health checks](#alb-target-is-unhealthy).
+Register `market-sentinel-app` on port `8000` and wait for **Healthy**.
 
 ---
 
-## 26. Request an ACM certificate
+## 21. Request an ACM certificate
 
 Open **AWS Certificate Manager** in the **same Region as the ALB**.
 
 1. Choose **Request a certificate**.
 2. Choose **Request a public certificate**.
-3. Enter the fully qualified domain name, for example:
+3. Enter the hostname, for example:
 
 ```text
 sentinel.example.com
@@ -1038,15 +1026,15 @@ sentinel.example.com
 
 4. Choose **DNS validation**.
 5. Request the certificate.
-6. Open the certificate details.
+6. Open its details.
 7. When Route 53 hosts the domain, choose **Create records in Route 53**.
-8. Wait for status **Issued**.
+8. Wait for **Issued**.
 
-For a wildcard certificate such as `*.example.com`, remember that the wildcard does not automatically cover the apex `example.com`.
+A wildcard such as `*.example.com` does not automatically cover the apex `example.com`.
 
 ---
 
-## 27. Create the Application Load Balancer
+## 22. Create the Application Load Balancer
 
 Open **EC2 -> Load Balancing -> Load Balancers -> Create load balancer -> Application Load Balancer**.
 
@@ -1056,20 +1044,18 @@ Configure:
 |---|---|
 | Name | `market-sentinel-alb` |
 | Scheme | Internet-facing |
-| IP address type | IPv4, or Dualstack when IPv6 is intentionally configured |
+| IP address type | IPv4, or Dualstack when intentionally configured |
 | VPC | Same VPC as EC2 |
 | Mappings | At least two public subnets in different Availability Zones |
 | Security group | `market-sentinel-alb-sg` |
-
-Listeners:
 
 ### HTTPS listener
 
 - protocol: HTTPS;
 - port: `443`;
 - default action: forward to `market-sentinel-tg`;
-- certificate: the issued ACM certificate;
-- security policy: use the current AWS recommended policy unless your organization requires another approved policy.
+- certificate: issued ACM certificate;
+- security policy: current AWS recommended policy unless organizational policy requires another.
 
 ### HTTP listener
 
@@ -1079,27 +1065,11 @@ Listeners:
 - destination port: `443`;
 - status code: `HTTP_301`.
 
-Create the load balancer.
-
-Wait for the ALB state to become **Active** and confirm the target group remains healthy.
+Create the ALB, wait for **Active**, and confirm the target remains healthy.
 
 ---
 
-## 28. Test the ALB DNS name
-
-Open the ALB details and copy its DNS name.
-
-Test HTTP redirection:
-
-```bash
-curl -I http://YOUR_ALB_DNS_NAME
-```
-
-Test HTTPS after the custom domain is configured. Browsers will not consider the ALB's AWS DNS name to match a certificate issued only for your custom domain.
-
----
-
-## 29. Create the Route 53 alias record
+## 23. Create the Route 53 alias
 
 Open **Route 53 -> Hosted zones -> your domain -> Create record**.
 
@@ -1116,15 +1086,13 @@ For `sentinel.example.com`:
 | Routing policy | Simple |
 | Evaluate target health | Yes |
 
-Create the record.
+Create the record. When using dual-stack, also create the appropriate AAAA alias.
 
-When using dual-stack, also create the appropriate AAAA alias record.
-
-If DNS is hosted outside Route 53, create the provider's equivalent CNAME for a subdomain. Apex-domain handling varies by DNS provider.
+When DNS is outside Route 53, create the provider's equivalent CNAME for a subdomain. Apex-domain handling varies by provider.
 
 ---
 
-## 30. Verify the public deployment
+## 24. Verify the public deployment
 
 Run from your computer:
 
@@ -1134,7 +1102,7 @@ curl -fsS https://sentinel.example.com/healthz
 curl -fsS https://sentinel.example.com/api/status
 ```
 
-Open in a browser:
+Open:
 
 ```text
 https://sentinel.example.com
@@ -1142,18 +1110,18 @@ https://sentinel.example.com
 
 Confirm:
 
-- the browser shows a valid certificate;
+- valid browser certificate;
 - HTTP redirects to HTTPS;
-- the dashboard loads;
+- dashboard loads;
 - `/healthz` returns `200`;
-- the ALB target remains healthy;
-- port `8000` is not reachable directly from the public internet.
+- ALB target remains healthy;
+- port `8000` is not directly reachable from the public internet.
 
 ---
 
 # Part VI - Enable optional integrations
 
-## 31. Enable OpenAI commentary
+## 25. Enable OpenAI commentary
 
 Edit `.env`:
 
@@ -1170,13 +1138,13 @@ OPENAI_API_KEY=YOUR_OPENAI_API_KEY
 OPENAI_MODEL=gpt-5-mini
 ```
 
-Recreate the web container so the changed environment is loaded:
+Reload the container environment:
 
 ```bash
 docker compose up -d --force-recreate web
 ```
 
-Test a refresh:
+Test:
 
 ```bash
 docker compose run --rm web \
@@ -1187,9 +1155,9 @@ OpenAI commentary explains deterministic results. It does not set or alter the s
 
 ---
 
-## 32. Configure Mailgun
+## 26. Configure Mailgun
 
-Edit `.env` and set:
+Set in `.env`:
 
 ```dotenv
 MAILGUN_API_KEY=YOUR_MAILGUN_API_KEY
@@ -1201,26 +1169,26 @@ DAILY_EMAIL_ENABLED=false
 ALERTS_ENABLED=false
 ```
 
-For a Mailgun EU-region domain, use:
+For Mailgun EU:
 
 ```dotenv
 MAILGUN_API_BASE=https://api.eu.mailgun.net
 ```
 
-Reload the container:
+Reload:
 
 ```bash
 docker compose up -d --force-recreate web
 ```
 
-Test the daily email without permanently enabling it:
+Test daily email:
 
 ```bash
 docker compose run --rm web \
   flask --app wsgi sentinel send-daily --force
 ```
 
-Test an alert:
+Test alert:
 
 ```bash
 docker compose run --rm web \
@@ -1234,22 +1202,24 @@ DAILY_EMAIL_ENABLED=true
 ALERTS_ENABLED=true
 ```
 
-Reload the container again after editing `.env`.
+Reload the container after editing `.env`.
 
 Mailgun sandbox domains normally restrict recipients. Use a verified sending domain for normal operations.
 
 ---
 
-# Part VII - Schedule daily collection and emails
+# Part VII - Schedule the daily run
 
-## 33. Create the daily runner script
+## 27. Create the runner script
 
-Confirm command locations:
+Confirm command paths:
 
 ```bash
 command -v docker
 command -v flock
 ```
+
+The following assumes both are under `/usr/bin`, which is normal for this installation. Use the paths returned above when different.
 
 Create the script:
 
@@ -1260,40 +1230,40 @@ set -Eeuo pipefail
 
 cd /opt/market-sentinel
 
-exec /usr/bin/flock -n /var/lock/market-sentinel-daily.lock \
+exec /usr/bin/flock -n /opt/market-sentinel/.daily-run.lock \
   /usr/bin/docker compose run --rm web \
   flask --app wsgi sentinel run-daily
 EOF
 ```
 
-Make it executable:
+Make it executable and ensure the lock path is owned by `ubuntu`:
 
 ```bash
 sudo chmod 755 /usr/local/bin/market-sentinel-daily
+sudo touch /opt/market-sentinel/.daily-run.lock
+sudo chown ubuntu:ubuntu /opt/market-sentinel/.daily-run.lock
 ```
 
-Test it manually as the `ubuntu` user:
+Test as `ubuntu`:
 
 ```bash
 /usr/local/bin/market-sentinel-daily
 ```
 
-Check the dashboard and logs before scheduling it.
+Check the dashboard and logs before scheduling.
 
 ---
 
-## 34. Create the cron log
+## 28. Create the cron log and schedule
+
+Create the log:
 
 ```bash
 sudo touch /var/log/market-sentinel-daily.log
 sudo chown ubuntu:ubuntu /var/log/market-sentinel-daily.log
 ```
 
----
-
-## 35. Add the cron schedule
-
-Open the `ubuntu` user's crontab:
+Open the `ubuntu` crontab:
 
 ```bash
 crontab -e
@@ -1305,84 +1275,77 @@ Add:
 0 7 * * 2-6 /usr/local/bin/market-sentinel-daily >> /var/log/market-sentinel-daily.log 2>&1
 ```
 
-This runs at **07:00 Singapore time, Tuesday through Saturday** after the corresponding completed US trading sessions.
+This runs at **07:00 Singapore time, Tuesday through Saturday** after the corresponding completed US sessions.
 
-Confirm the host timezone:
+Verify:
 
 ```bash
 timedatectl
-```
-
-Confirm the cron entry:
-
-```bash
 crontab -l
+systemctl status cron
 ```
 
-Check the log after the first scheduled run:
+After the first scheduled run:
 
 ```bash
 tail -n 200 /var/log/market-sentinel-daily.log
 ```
 
-The `flock` lock prevents overlapping daily jobs.
-
-> [!NOTE]
-> A public holiday or provider delay may mean the latest market date has not advanced. Market Sentinel's input hashing and revision logic prevents identical data from creating duplicate research runs.
+The lock prevents overlapping jobs. A holiday or provider delay may mean the latest market date has not advanced; identical inputs are idempotent and do not create duplicate research runs.
 
 ---
 
 # Part VIII - Backups and research retention
 
-## 36. Configure RDS backups
+## 29. Configure RDS backups
 
 In **RDS -> Databases -> market-sentinel-db -> Modify**, confirm:
 
-- automated backups are enabled;
-- backup retention meets your recovery objective;
-- deletion protection is enabled for production;
-- the preferred backup window is documented;
-- storage autoscaling is configured;
-- final snapshot behavior is understood before deletion.
+- automated backups enabled;
+- retention meets the recovery objective;
+- deletion protection enabled for production;
+- preferred backup window documented;
+- storage autoscaling configured;
+- final snapshot behavior understood before deletion.
 
 Create a manual snapshot before:
 
-- major application upgrades;
-- database-related code changes;
+- major upgrades;
+- database-related changes;
 - credential rotation;
 - destructive maintenance.
 
-RDS point-in-time recovery creates a new database instance. Test the complete restore and reconnection process periodically.
+RDS point-in-time recovery creates a new database instance. Periodically test the complete restore and reconnection process.
 
 ---
 
-## 37. Create an optional S3 backup bucket
+## 30. Create an optional versioned S3 bucket
 
 Open **S3 -> Create bucket**.
 
 Recommended configuration:
 
-- unique bucket name;
+- unique name;
 - same Region as the application when practical;
-- Block Public Access: all enabled;
-- bucket versioning: enabled;
-- default encryption: enabled;
+- all Block Public Access controls enabled;
+- versioning enabled;
+- default encryption enabled;
 - lifecycle rules for older noncurrent versions when appropriate;
 - no public website hosting.
 
-Example bucket name:
+Example:
 
 ```text
 YOUR-ACCOUNT-market-sentinel-backups
 ```
 
-Attach the narrowly scoped S3 policy from [Create an EC2 IAM role](#8-create-an-ec2-iam-role) to the EC2 role.
+Attach the narrowly scoped S3 policy from [Create an EC2 IAM role](#6-create-an-ec2-iam-role).
 
 ---
 
-## 38. Install AWS CLI v2 for S3 uploads
+## 31. Install AWS CLI v2
 
-On x86_64 Ubuntu:
+For x86_64 Ubuntu:
 
 ```bash
 cd /tmp
@@ -1393,7 +1356,7 @@ sudo ./aws/install
 rm -rf aws awscliv2.zip
 ```
 
-Verify that the EC2 IAM role is being used:
+Verify the EC2 instance role:
 
 ```bash
 aws sts get-caller-identity
@@ -1403,72 +1366,61 @@ Do not configure long-lived AWS access keys on EC2 when an instance role can pro
 
 ---
 
-## 39. Export research history
+## 32. Export history and upload it to S3
 
-Create a host export directory:
+Create a protected host directory:
 
 ```bash
 sudo mkdir -p /opt/market-sentinel/exports
 sudo chown ubuntu:ubuntu /opt/market-sentinel/exports
+chmod 700 /opt/market-sentinel/exports
 ```
 
-Create a full JSON Lines export:
+Run the export, checksum, and upload in the same shell block so the timestamp remains consistent:
 
 ```bash
 cd /opt/market-sentinel
 STAMP=$(date +%Y%m%d-%H%M%S)
+FILE="score-history-${STAMP}.jsonl"
 
+# Export through a one-off bind mount.
 docker compose run --rm \
   -v /opt/market-sentinel/exports:/exports \
   web \
   flask --app wsgi sentinel export-history \
-  --output "/exports/score-history-${STAMP}.jsonl" \
+  --output "/exports/${FILE}" \
   --format jsonl \
   --include-lineage \
   --include-revisions
-```
 
-Create a checksum:
-
-```bash
+# Create checksum.
 cd /opt/market-sentinel/exports
-sha256sum "score-history-${STAMP}.jsonl" \
-  > "score-history-${STAMP}.jsonl.sha256"
-```
+sha256sum "${FILE}" > "${FILE}.sha256"
 
-Upload both files:
-
-```bash
+# Upload both files.
 aws s3 cp \
-  "score-history-${STAMP}.jsonl" \
-  "s3://YOUR-BACKUP-BUCKET/market-sentinel/exports/"
+  "${FILE}" \
+  "s3://YOUR-BACKUP-BUCKET/market-sentinel/exports/${FILE}"
 
 aws s3 cp \
-  "score-history-${STAMP}.jsonl.sha256" \
-  "s3://YOUR-BACKUP-BUCKET/market-sentinel/exports/"
-```
+  "${FILE}.sha256" \
+  "s3://YOUR-BACKUP-BUCKET/market-sentinel/exports/${FILE}.sha256"
 
-Verify:
-
-```bash
+# Verify the prefix listing.
 aws s3 ls "s3://YOUR-BACKUP-BUCKET/market-sentinel/exports/"
 ```
 
 Research exports complement RDS backups; they do not replace database backups.
 
----
-
-## 40. Suggested backup policy
-
-A practical starting policy is:
+### Suggested backup policy
 
 - daily RDS automated backups;
-- RDS point-in-time recovery retained according to the recovery objective;
-- a manual RDS snapshot before each significant deployment;
+- point-in-time recovery retained according to the recovery objective;
+- manual RDS snapshot before significant deployments;
 - monthly lineage export to versioned S3;
-- checksum stored beside every export;
+- checksum beside every export;
 - quarterly restore test;
-- indefinite retention of research history unless data licensing requires otherwise.
+- indefinite research-history retention unless licensing requires otherwise.
 
 Document who owns restore testing and how success is recorded.
 
@@ -1476,9 +1428,9 @@ Document who owns restore testing and how success is recorded.
 
 # Part IX - Monitoring and operations
 
-## 41. Create CloudWatch alarms
+## 33. Create CloudWatch alarms
 
-At minimum, consider alarms for:
+Consider alarms for:
 
 ### EC2
 
@@ -1490,8 +1442,8 @@ At minimum, consider alarms for:
 ### ALB
 
 - unhealthy host count;
-- elevated HTTP 5xx responses;
-- increased target response time.
+- HTTP 5xx responses;
+- target response time.
 
 ### RDS
 
@@ -1499,54 +1451,54 @@ At minimum, consider alarms for:
 - high CPU;
 - high database connections;
 - low freeable memory;
-- replica or Multi-AZ events when applicable.
+- replication or Multi-AZ events when applicable.
 
-Send alarm notifications through an SNS topic to an operational email address.
+Send alarm notifications through SNS to an owned operational address.
 
 ---
 
-## 42. Useful operational commands
+## 34. Useful commands
 
-### Container status
+Container status:
 
 ```bash
 cd /opt/market-sentinel
 docker compose ps
 ```
 
-### Recent logs
+Recent logs:
 
 ```bash
 docker compose logs --tail=200 web
 ```
 
-### Live logs
+Live logs:
 
 ```bash
 docker compose logs -f web
 ```
 
-### Health check
+Local health:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/healthz
 ```
 
-### Disk space
+Disk usage:
 
 ```bash
 df -h
 docker system df
 ```
 
-### Research history
+Research history:
 
 ```bash
 docker compose run --rm web \
   flask --app wsgi sentinel history --limit 20
 ```
 
-### Latest public status
+Public status:
 
 ```bash
 curl -fsS https://sentinel.example.com/api/status
@@ -1554,7 +1506,7 @@ curl -fsS https://sentinel.example.com/api/status
 
 ---
 
-## 43. Log rotation
+## 35. Rotate the cron log
 
 Create `/etc/logrotate.d/market-sentinel`:
 
@@ -1572,21 +1524,21 @@ sudo tee /etc/logrotate.d/market-sentinel >/dev/null <<'EOF'
 EOF
 ```
 
-Test the configuration:
+Dry-run the configuration:
 
 ```bash
 sudo logrotate -d /etc/logrotate.d/market-sentinel
 ```
 
-The Docker logging driver also needs a retention policy for long-running production use. Configure Docker daemon log rotation or send logs to a centralized logging service.
+Docker container logs also need retention controls for long-running production use. Configure Docker daemon log rotation or centralized logging.
 
 ---
 
-# Part X - Safe application upgrades
+# Part X - Safe upgrades and rollback
 
-## 44. Standard upgrade procedure
+## 36. Standard upgrade procedure
 
-### 44.1 Check the current state
+### Check the current state
 
 ```bash
 cd /opt/market-sentinel
@@ -1595,19 +1547,19 @@ docker compose ps
 curl -fsS http://127.0.0.1:8000/healthz
 ```
 
-Do not continue when there are unexplained local Git changes.
+Do not continue when unexplained local Git changes exist.
 
-### 44.2 Create a backup
+### Back up
 
 - create a manual RDS snapshot;
 - optionally export research history to S3;
-- record the currently deployed commit:
+- record the current commit:
 
 ```bash
 git rev-parse HEAD
 ```
 
-### 44.3 Pull reviewed code
+### Pull reviewed code
 
 ```bash
 git fetch origin
@@ -1615,24 +1567,20 @@ git switch main
 git pull --ff-only origin main
 ```
 
-### 44.4 Update `APP_GIT_SHA`
+### Update code lineage
 
 ```bash
 git rev-parse HEAD
 nano .env
 ```
 
-Paste the new commit SHA into `APP_GIT_SHA`.
+Paste the new SHA into `APP_GIT_SHA`.
 
-### 44.5 Build the new image
+### Build and apply additive setup
 
 ```bash
 docker compose build --pull
-```
 
-### 44.6 Apply additive database setup
-
-```bash
 docker compose run --rm web \
   flask --app wsgi sentinel init-db
 
@@ -1640,17 +1588,12 @@ docker compose run --rm web \
   flask --app wsgi sentinel migrate-history
 ```
 
-The current migration is additive and idempotent. Future releases may introduce a dedicated migration framework; always read release notes before upgrading.
+The current setup is additive and idempotent. Future releases may introduce a dedicated migration framework; always read release notes.
 
-### 44.7 Recreate the application
+### Recreate and verify
 
 ```bash
 docker compose up -d
-```
-
-### 44.8 Verify
-
-```bash
 docker compose ps
 docker compose logs --tail=100 web
 curl -fsS http://127.0.0.1:8000/healthz
@@ -1659,26 +1602,24 @@ curl -fsS https://sentinel.example.com/healthz
 
 Confirm the ALB target is healthy.
 
-### 44.9 Clean unused images carefully
-
-After the new deployment has been stable:
+After the deployment is stable, remove only unused images:
 
 ```bash
 docker image prune
 ```
 
-Do not run aggressive Docker prune commands without understanding which volumes and images will be removed.
+Do not use aggressive prune commands without understanding which volumes and images will be removed.
 
 ---
 
-## 45. Rollback outline
+## 37. Rollback outline
 
-When an application-only deployment fails:
+For an application-only failure:
 
 1. record the failing commit and logs;
-2. switch to the previously recorded known-good commit;
+2. switch to the previous known-good commit;
 3. rebuild and restart;
-4. verify health locally and through the ALB.
+4. verify locally and through the ALB.
 
 Example:
 
@@ -1690,9 +1631,9 @@ docker compose up -d
 curl -fsS http://127.0.0.1:8000/healthz
 ```
 
-When database state must be rolled back, restore the RDS snapshot or point-in-time backup to a **new RDS instance**, validate it, update `DATABASE_URL`, and recreate the container.
+For database rollback, restore an RDS snapshot or point-in-time backup to a **new RDS instance**, validate it, update `DATABASE_URL`, and recreate the container.
 
-Do not assume that checking out old code automatically reverses database changes.
+Checking out old code does not automatically reverse database changes.
 
 ---
 
@@ -1700,7 +1641,7 @@ Do not assume that checking out old code automatically reverses database changes
 
 ## ALB target is unhealthy
 
-Check in this order:
+Check in order:
 
 1. Container is running:
 
@@ -1709,13 +1650,13 @@ cd /opt/market-sentinel
 docker compose ps
 ```
 
-2. Local health check succeeds:
+2. Local health succeeds:
 
 ```bash
 curl -v http://127.0.0.1:8000/healthz
 ```
 
-3. Docker is listening on port 8000:
+3. Port `8000` is listening:
 
 ```bash
 sudo ss -lntp | grep 8000
@@ -1730,15 +1671,15 @@ Path: /healthz
 Success code: 200
 ```
 
-5. EC2 security group allows port `8000` from the ALB security group.
-6. ALB and EC2 are in the same VPC.
-7. The target is registered in an Availability Zone enabled on the ALB.
+5. EC2 security group allows `8000` from the ALB security group.
+6. ALB and EC2 use the same VPC.
+7. The target is in an Availability Zone enabled on the ALB.
 
-Do not solve an unhealthy target by opening port `8000` to the whole internet.
+Do not open port `8000` to the whole internet as a workaround.
 
 ---
 
-## ALB returns 502 Bad Gateway
+## ALB returns 502
 
 Check:
 
@@ -1750,10 +1691,10 @@ curl -v http://127.0.0.1:8000/
 Common causes:
 
 - container exited;
-- application startup failed because of database configuration;
-- target group points to the wrong port;
-- EC2 security group blocks ALB traffic;
-- Gunicorn is still starting or has insufficient memory.
+- startup failed because of database configuration;
+- target group uses the wrong port;
+- security group blocks ALB traffic;
+- Gunicorn is still starting or memory is insufficient.
 
 ---
 
@@ -1763,7 +1704,7 @@ Check:
 
 - RDS status is **Available**;
 - EC2 and RDS use the same VPC;
-- RDS is associated with `market-sentinel-rds-sg`;
+- RDS uses `market-sentinel-rds-sg`;
 - RDS security group permits `5432` from `market-sentinel-ec2-sg`;
 - endpoint and port are correct;
 - network ACLs are not blocking traffic.
@@ -1779,11 +1720,11 @@ Check:
 - username;
 - password;
 - initial database name;
-- URL encoding of special password characters;
-- `DATABASE_URL` does not contain accidental spaces or quotation marks;
-- the environment was reloaded after editing `.env`.
+- URL encoding of special characters;
+- accidental spaces or quotes in `DATABASE_URL`;
+- environment reloaded after editing `.env`.
 
-Recreate the container after environment changes:
+Reload:
 
 ```bash
 docker compose up -d --force-recreate web
@@ -1793,19 +1734,22 @@ docker compose up -d --force-recreate web
 
 ## Docker permission denied
 
-Confirm group membership:
+Check:
 
 ```bash
+whoami
 id
 ```
 
-If `docker` is missing:
+This guide expects `ubuntu` with membership in `docker`.
+
+Fix membership:
 
 ```bash
 sudo usermod -aG docker ubuntu
 ```
 
-Log out and reconnect. Do not repeatedly use unsafe permission workarounds on the Docker socket.
+Log out and reconnect. When using Session Manager, switch with `sudo -iu ubuntu`.
 
 ---
 
@@ -1814,9 +1758,9 @@ Log out and reconnect. Do not repeatedly use unsafe permission workarounds on th
 Check:
 
 - `FRED_API_KEY` is present;
-- EC2 can reach the internet over HTTPS;
-- the provider has published the requested observation;
-- application logs show the exact series status.
+- EC2 has outbound HTTPS;
+- the series observation has been published;
+- application logs show series status.
 
 A missing FRED key reduces coverage but does not prevent all available indicators from being calculated.
 
@@ -1831,7 +1775,7 @@ OPENAI_ENABLED=true
 OPENAI_API_KEY=...
 ```
 
-Then inspect logs:
+Inspect:
 
 ```bash
 docker compose logs --tail=200 web
@@ -1845,15 +1789,15 @@ The deterministic score is stored before commentary generation. An OpenAI outage
 
 Check:
 
-- Mailgun domain is verified;
-- the sending address belongs to the verified domain;
-- API base matches the Mailgun region;
+- domain verification;
+- sender belongs to verified domain;
+- API base matches Mailgun region;
 - sandbox recipient restrictions;
 - recipient spelling;
 - Mailgun activity logs;
-- Market Sentinel application logs.
+- application logs.
 
-Keep daily email and alerts disabled until forced test sends work.
+Keep email and alerts disabled until forced test sends work.
 
 ---
 
@@ -1861,14 +1805,14 @@ Keep daily email and alerts disabled until forced test sends work.
 
 Check:
 
-- ACM certificate is **Issued**;
-- certificate and ALB are in the same AWS Region;
-- the certificate includes the exact public hostname;
-- the HTTPS listener uses that certificate;
-- Route 53 points the hostname to the correct ALB;
-- DNS changes have propagated.
+- ACM status is **Issued**;
+- certificate and ALB are in the same Region;
+- certificate includes the exact hostname;
+- HTTPS listener uses the certificate;
+- Route 53 points to the correct ALB;
+- DNS has propagated.
 
-The ALB AWS DNS name will not match a certificate issued only for `sentinel.example.com`.
+The ALB AWS DNS name does not match a certificate issued only for `sentinel.example.com`.
 
 ---
 
@@ -1877,19 +1821,25 @@ The ALB AWS DNS name will not match a certificate issued only for `sentinel.exam
 Check:
 
 ```bash
+whoami
 timedatectl
 crontab -l
 systemctl status cron
 tail -n 200 /var/log/market-sentinel-daily.log
 ```
 
-Run the script manually:
+Run manually as `ubuntu`:
 
 ```bash
 /usr/local/bin/market-sentinel-daily
 ```
 
-Confirm the cron user belongs to the Docker group and that the script uses absolute command paths.
+Confirm:
+
+- cron belongs to the `ubuntu` user;
+- `ubuntu` belongs to `docker`;
+- the lock file is writable by `ubuntu`;
+- the script uses the actual absolute paths returned by `command -v`.
 
 ---
 
@@ -1902,15 +1852,15 @@ df -h
 docker system df
 ```
 
-Review old Docker images and logs. Expand the EBS volume when appropriate, then extend the partition and filesystem according to the current EC2 volume documentation.
+Review old images and logs. Expand the EBS volume when appropriate, then extend the partition and filesystem according to current EC2 documentation.
 
 Do not delete Docker volumes blindly; the SQLite fallback database and other persistent data may reside in a volume.
 
 ---
 
-# Part XII - Security hardening checklist
+# Part XII - Security and final checklists
 
-Before calling the deployment production-ready, confirm:
+## Security hardening checklist
 
 - [ ] AWS root user has MFA and is not used for daily administration.
 - [ ] EC2 uses an IAM role instead of stored AWS access keys.
@@ -1923,21 +1873,19 @@ Before calling the deployment production-ready, confirm:
 - [ ] `.env` is mode `600` and not committed.
 - [ ] OpenAI, Mailgun, FRED, and database secrets are stored in a password manager.
 - [ ] HTTPS is enforced at the ALB.
-- [ ] The ACM certificate is set for automatic managed renewal through supported AWS integration.
-- [ ] S3 Block Public Access is enabled on backup buckets.
+- [ ] ACM certificate uses supported managed renewal.
+- [ ] S3 Block Public Access is enabled.
 - [ ] S3 versioning is enabled for backup artifacts.
-- [ ] CloudWatch alarms have an owned notification destination.
+- [ ] CloudWatch alarms have an owned destination.
 - [ ] Application and cron logs have retention controls.
 - [ ] Restore procedures have been tested.
-- [ ] Provider licensing permits the retained data and exports.
+- [ ] Provider licensing permits retained data and exports.
 
-For stronger secret management, add a deployment process that retrieves values from AWS Secrets Manager or Systems Manager Parameter Store and writes the runtime environment securely. The current application reads standard environment variables and does not directly call those services.
+For stronger secret management, add a deployment process that retrieves values from AWS Secrets Manager or Systems Manager Parameter Store and writes the runtime environment securely. The application currently reads standard environment variables and does not directly call those services.
 
----
+## Final deployment checklist
 
-# Part XIII - Final deployment checklist
-
-## AWS resources
+### AWS resources
 
 - [ ] IAM EC2 role created and attached.
 - [ ] ALB, EC2, and RDS security groups created.
@@ -1949,8 +1897,9 @@ For stronger secret management, add a deployment process that retrieves values f
 - [ ] ALB created with HTTPS and HTTP redirect.
 - [ ] Route 53 alias points to the ALB.
 
-## Market Sentinel
+### Market Sentinel
 
+- [ ] Session standardized to the `ubuntu` user.
 - [ ] Repository cloned into `/opt/market-sentinel`.
 - [ ] `.env` configured and protected.
 - [ ] RDS connection tested with `psql`.
@@ -1962,75 +1911,77 @@ For stronger secret management, add a deployment process that retrieves values f
 - [ ] Public dashboard and APIs verified.
 - [ ] Optional OpenAI test completed.
 - [ ] Optional Mailgun test completed.
-- [ ] Cron schedule tested manually and installed.
+- [ ] Daily script tested manually and cron installed.
 - [ ] Backups and alarms configured.
 
 ---
 
-# Appendix A: Lower-cost single-EC2 deployment
+# Appendices
+
+## Appendix A: Lower-cost single-EC2 deployment
 
 For a temporary demonstration, you can omit ALB and RDS and use:
 
 - one EC2 instance;
-- the existing Docker Compose SQLite volume;
+- the Docker Compose SQLite volume;
 - an Elastic IP;
 - Caddy or Nginx with an automatically managed certificate;
 - Route 53 pointing directly to the Elastic IP.
 
-This reduces infrastructure cost but has important limitations:
+Limitations:
 
-- one server is a single point of failure;
-- the SQLite volume requires deliberate backups;
-- TLS certificate management occurs on EC2 rather than through ALB + ACM;
-- scaling to multiple app instances is not straightforward;
-- direct public ports `80` and `443` must be opened on the EC2 security group;
-- careful reverse-proxy configuration is required.
+- single point of failure;
+- SQLite volume requires deliberate backups;
+- TLS management occurs on EC2 rather than ALB + ACM;
+- scaling to multiple instances is not straightforward;
+- EC2 ports `80` and `443` must be public;
+- reverse-proxy configuration is required.
 
-The recommended ALB + RDS design is more suitable for durable research history and operational growth.
-
----
-
-# Appendix B: Why an Elastic IP is optional
-
-When Route 53 points to an Application Load Balancer:
-
-- the public application endpoint is the ALB;
-- the ALB DNS name remains the routing target;
-- the EC2 public IP is not published to users;
-- replacing the EC2 instance does not require changing public DNS when the new instance is registered in the target group.
-
-An Elastic IP can still be useful for a stable administrative address in a simple public-subnet deployment, but Session Manager is preferred for administration.
+ALB + RDS is more suitable for durable research history and operational growth.
 
 ---
 
-# Appendix C: AWS-native scheduling alternative
+## Appendix B: Why an Elastic IP is optional
 
-A host cron job is the simplest single-instance scheduler.
+When Route 53 points to an ALB:
 
-A more AWS-native design can use EventBridge Scheduler to invoke one of the following:
+- the public endpoint is the ALB;
+- the ALB DNS name is the routing target;
+- the EC2 public IP is not published;
+- replacing EC2 does not require public DNS changes when the new instance is registered in the target group.
 
-- Systems Manager Run Command on the EC2 instance;
-- an ECS task running the Market Sentinel CLI;
+An Elastic IP can be useful for a stable administrative address in a simple public-subnet deployment, but Session Manager is preferred.
+
+---
+
+## Appendix C: AWS-native scheduling alternative
+
+A host cron job is simplest for one instance.
+
+A more AWS-native design can use EventBridge Scheduler to invoke:
+
+- Systems Manager Run Command on EC2;
+- an ECS task running the CLI;
 - a Lambda wrapper where runtime and dependency constraints are addressed.
 
-Do not run APScheduler inside every Gunicorn worker. Multiple web workers can cause the same job to execute more than once.
+Do not run APScheduler inside every Gunicorn worker. Multiple workers can execute the same job more than once.
 
 ---
 
-# Appendix D: Teardown
+## Appendix D: Teardown
 
-To avoid unexpected costs when the environment is no longer required:
+To avoid unexpected costs:
 
 1. export research history and verify the backup;
-2. create a final RDS snapshot when retention is required;
+2. create a final RDS snapshot when required;
 3. delete or stop scheduled jobs;
 4. delete the ALB and target group;
-5. terminate the EC2 instance;
-6. delete the RDS instance only after confirming final-snapshot requirements;
-7. release any Elastic IP not in use;
-8. delete unused EBS snapshots and volumes according to retention policy;
+5. terminate EC2;
+6. delete RDS only after confirming final-snapshot requirements;
+7. release unused Elastic IPs;
+8. delete unused EBS snapshots and volumes according to policy;
 9. remove Route 53 records and optionally the hosted zone;
-10. delete ACM certificates no longer attached to resources;
+10. delete unused ACM certificates;
 11. empty and delete S3 buckets only when retention obligations permit;
 12. remove unused IAM roles and policies;
 13. review AWS Cost Explorer for remaining resources.
