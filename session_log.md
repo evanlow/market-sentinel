@@ -56,4 +56,40 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** No Python tests yet. Direct container access to GitHub was attempted only after verifying the target path; DNS resolution was unavailable, so implementation will use the GitHub connector and GitHub Actions as the authoritative test environment.  
 **Results:** Feature branch is ready for a baseline CI gate before implementation.  
 **Risks / Blockers:** Local baseline execution is unavailable because the isolated container cannot resolve GitHub or install the repository. This is documented; GitHub Actions will provide dependency-backed baseline and post-change verification.  
-**Next Steps:** Open a review branch PR to establish the baseline CI result, then add tests before implementation changes.
+**Next Steps:** Open a review branch PR to establish the baseline CI result, then add tests before implementation changes.  
+
+---
+
+### 2026-07-23 — Research History Baseline Gate
+
+**Checkpoint Type:** Test Gate  
+**Directive Compliance KPI:** 5/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 live tracking continued; #3 baseline CI passed; #5 no UI assets or browser behavior are changed; #7 the unavailable local runner was investigated and documented; #8 this checkpoint records the result.  
+- **Yellow:** #2 the connector environment has no accessible project virtual environment; #4 post-change tests are not yet applicable; #6 API input validation will be evidenced with the feature tests.  
+- **Red:** none.  
+**Trigger Event:** Draft pull request opened to establish the pre-implementation quality gate.  
+**KPI Delta:** +2 green after the baseline test gate.  
+**Actions Completed:** Confirmed the branch starts from current `main` and reviewed the existing models, orchestrator, routes, CLI, risk rules, and tests before changing production code.  
+**Tests Run:** GitHub Actions CI run 29988299088 on Python 3.11 and 3.12, including Ruff and pytest with coverage.  
+**Results:** Baseline workflow completed successfully.  
+**Risks / Blockers:** No baseline regression identified. Local execution remains unavailable because the isolated connector workspace cannot resolve GitHub.  
+**Next Steps:** Add failing contract tests for immutable history, revisions, lineage, API validation, migration, export, and refresh integration before implementation.  
+
+---
+
+### 2026-07-23 — Research History Implementation
+
+**Checkpoint Type:** Implementation  
+**Directive Compliance KPI:** 6/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 live tracking maintained; #3 clean baseline established; #5 no HTML, CSS, or JavaScript changed; #6 history query parameters and export destinations receive explicit backend validation; #7 duplicate-run, revision, demo-data, and migration edge cases were handled directly; #8 implementation status is recorded.  
+- **Yellow:** #2 no Python command can be run in a verified project virtual environment through the connector; #4 post-change GitHub Actions is pending.  
+- **Red:** none.  
+**Trigger Event:** Test contracts were committed before production implementation.  
+**KPI Delta:** +1 green after input-handling coverage was implemented.  
+**Actions Completed:** Added append-only `ScoreRun` history, normalized indicator/source lineage, versioned commentary, forward-outcome schema, deterministic ruleset/input hashes, canonical revisions, legacy migration, API endpoints, CLI inspection/export, deployment guidance, and dual-write integration while preserving the existing operational `Snapshot` model.  
+**Tests Run:** Added focused unit and integration tests for idempotency, changed-input revisions, canonical selection, commentary versioning, legacy migration, API validation, atomic exports, and orchestrator dual writes. Post-change CI is awaiting execution.  
+**Results:** Implementation and documentation are complete on the feature branch; no secrets or credentials were introduced.  
+**Risks / Blockers:** Dependency-backed validation must complete in GitHub Actions before handoff. Automatic forward-outcome population is intentionally not enabled; the schema is present for a separately reviewed study workflow after each horizon matures.  
+**Next Steps:** Run post-change Ruff and pytest on Python 3.11/3.12, correct every warning or failure, review automated feedback, then record the handoff checkpoint.
