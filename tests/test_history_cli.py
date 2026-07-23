@@ -52,7 +52,7 @@ def test_export_history_writes_atomic_jsonl_with_lineage(app, tmp_path):
             revision=1,
             run_type="live",
             is_canonical=True,
-            canonical_key="2026-01-05:1.0.0",
+            canonical_key="2026-01-05:1.0.0:live",
             ruleset={"rules": []},
             indicators=[],
             triggers=[],
