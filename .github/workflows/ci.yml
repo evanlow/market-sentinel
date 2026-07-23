@@ -33,10 +33,10 @@ jobs:
       - name: Prepare Ruff auto-fix patch
         if: steps.ruff.outcome == 'failure'
         run: |
-          ruff check . --fix
+          ruff check . --fix || true
           git diff -- . ':!.github/workflows/ci.yml' > ruff-fixes.patch
       - name: Upload Ruff diagnostics
-        if: steps.ruff.outcome == 'failure'
+        if: always() && steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: ruff-diagnostics-${{ matrix.python-version }}
