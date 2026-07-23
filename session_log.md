@@ -164,4 +164,22 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** Manual static review against the current `Dockerfile`, `docker-compose.yml`, `.env.example`, Flask CLI commands, health endpoint, and research-history behavior. Compared the branch to `main`: only Markdown files changed, with no credential-bearing files or application code in the diff.  
 **Results:** Pull request #6 is open and mergeable; no real credentials, account identifiers, domain names, or private keys are present.  
 **Risks / Blockers:** GitHub Actions had not yet attached a run to the documentation PR at this checkpoint. AWS console labels and product options may evolve, so official references are included and transient prices are not asserted.  
-**Next Steps:** Trigger and verify the final pull-request CI workflow, address reviewer feedback, and record the handoff checkpoint.
+**Next Steps:** Trigger and verify the final pull-request CI workflow, address reviewer feedback, and record the handoff checkpoint.  
+
+---
+
+### 2026-07-23 — AWS Deployment Guide Handoff
+
+**Checkpoint Type:** Handoff  
+**Directive Compliance KPI:** 6/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance was tracked throughout; #3 the branch started from a green `main`; #5 no application UI changed; #6 examples use placeholders and safe secret-handling practices; #7 command and permission issues were investigated and corrected; #8 scope, review evidence, risks, and next action are documented.  
+- **Yellow:** #2 no Python execution was applicable to this Markdown-only change; #4 GitHub Actions did not attach a workflow run to PR #6 after the branch update and PR reopen.  
+- **Red:** none.  
+**Trigger Event:** Copilot completed an independent review of all three changed files and generated no comments.  
+**KPI Delta:** No KPI change; independent review completed, while the absent workflow run remains transparently yellow.  
+**Actions Completed:** Finalized the root deployment guide, updated the concise deployment note, reviewed the complete branch diff for secret exposure and scope, reopened the PR to refresh its head, and requested independent review.  
+**Tests Run:** Documentation-only static verification against current repository configuration and commands. Copilot reviewed 3/3 changed files with no findings. Repeated workflow queries returned no run for the documentation PR, so no CI pass is claimed.  
+**Results:** PR #6 is open, mergeable, and ready for owner review. The diff contains Markdown only and no credentials or application behavior changes.  
+**Risks / Blockers:** AWS console wording, supported versions, and available instance classes may change over time. Official AWS and Docker references are included. The owner may choose to rerun or require CI before merge if repository policy mandates a check on documentation-only changes.  
+**Next Steps:** Review and merge PR #6 when satisfied, then follow `DEPLOY.md` using actual AWS account, domain, and secret values.
