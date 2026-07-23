@@ -30,12 +30,19 @@ jobs:
         run: |
           set -o pipefail
           ruff check . --output-format=concise | tee ruff-report.txt
-      - name: Upload Ruff report
+      - name: Prepare Ruff auto-fix patch
+        if: steps.ruff.outcome == 'failure'
+        run: |
+          ruff check . --fix
+          git diff -- . ':!.github/workflows/ci.yml' > ruff-fixes.patch
+      - name: Upload Ruff diagnostics
         if: steps.ruff.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: ruff-report-${{ matrix.python-version }}
-          path: ruff-report.txt
+          name: ruff-diagnostics-${{ matrix.python-version }}
+          path: |
+            ruff-report.txt
+            ruff-fixes.patch
       - run: pytest --cov=market_sentinel --cov-report=term-missing
       - name: Fail when Ruff found violations
         if: always() && steps.ruff.outcome == 'failure'
