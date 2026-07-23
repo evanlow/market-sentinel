@@ -10,9 +10,10 @@ from flask import current_app, render_template
 from sqlalchemy import desc
 
 from ..extensions import db
-from ..models import AlertEvent, ManualMetric, Snapshot
+from ..models import AlertEvent, ManualMetric, ScoreRun, Snapshot
 from .alerts import AlertPolicy
 from .fred import FredClient, FredError
+from .history import ResearchHistoryService
 from .indicators import IndicatorCalculator
 from .mailgun import MailgunMailer
 from .market_data import YahooMarketDataClient
@@ -30,6 +31,7 @@ class SentinelOrchestrator:
         fred_client: FredClient | None = None,
         calculator: IndicatorCalculator | None = None,
         risk_engine: RiskEngine | None = None,
+        history: ResearchHistoryService | None = None,
         commentary: OpenAICommentaryService | None = None,
         mailer: MailgunMailer | None = None,
     ) -> None:
@@ -38,6 +40,7 @@ class SentinelOrchestrator:
         self.fred_client = fred_client or FredClient(config["FRED_API_KEY"])
         self.calculator = calculator or IndicatorCalculator()
         self.risk_engine = risk_engine or RiskEngine()
+        self.history = history or ResearchHistoryService(self.risk_engine)
         self.commentary = commentary or OpenAICommentaryService(
             enabled=config["OPENAI_ENABLED"],
             api_key=config["OPENAI_API_KEY"],
@@ -54,6 +57,7 @@ class SentinelOrchestrator:
         self.alert_policy = AlertPolicy(config["ALERT_MIN_COVERAGE"])
 
     def refresh(self, *, generate_commentary: bool = True) -> Snapshot:
+        calculated_at = datetime.now(UTC)
         prices, market_status = self.market_client.fetch()
         macro, fred_status = self._fetch_macro()
         source_status: dict[str, Any] = {
@@ -74,24 +78,31 @@ class SentinelOrchestrator:
             margin_debt_as_of=margin_as_of,
         )
         assessment = self.risk_engine.assess(market_as_of, metrics)
+        previous_scores = self._previous_scores(market_as_of)
+        change_1d = assessment.score - previous_scores[0] if previous_scores else None
+        change_3d = assessment.score - previous_scores[2] if len(previous_scores) >= 3 else None
 
-        previous_rows = (
-            Snapshot.query.filter(Snapshot.market_as_of < market_as_of)
-            .order_by(desc(Snapshot.market_as_of))
-            .limit(3)
-            .all()
+        archived = self.history.archive_assessment(
+            assessment=assessment,
+            metrics=metrics,
+            source_status=source_status,
+            score_change_1d=change_1d,
+            score_change_3d=change_3d,
+            calculated_at=calculated_at,
         )
-        previous = previous_rows[0] if previous_rows else None
-        third_previous = previous_rows[2] if len(previous_rows) >= 3 else None
-        change_1d = assessment.score - previous.score if previous else None
-        change_3d = assessment.score - third_previous.score if third_previous else None
+        cached_commentary = self.history.find_commentary(
+            archived.run,
+            provider=self.commentary.PROVIDER,
+            model=self.commentary.model,
+            prompt_version=self.commentary.PROMPT_VERSION,
+        )
 
         snapshot = Snapshot.query.filter_by(market_as_of=market_as_of).one_or_none()
         if snapshot is None:
             snapshot = Snapshot(market_as_of=market_as_of)
             db.session.add(snapshot)
 
-        snapshot.captured_at = datetime.now(UTC)
+        snapshot.captured_at = calculated_at
         snapshot.score = assessment.score
         snapshot.regime = assessment.regime
         snapshot.coverage = assessment.coverage
@@ -100,13 +111,20 @@ class SentinelOrchestrator:
         snapshot.indicators = [item.to_dict() for item in assessment.indicators]
         snapshot.triggers = assessment.triggers
         snapshot.source_status = source_status
-        snapshot.ai_summary = None
+        snapshot.ai_summary = cached_commentary.summary if cached_commentary else None
         snapshot.is_demo = False
         db.session.commit()
 
-        if generate_commentary:
+        if generate_commentary and cached_commentary is None:
             summary = self.commentary.generate(snapshot.to_dict())
             if summary:
+                self.history.record_commentary(
+                    archived.run,
+                    summary=summary,
+                    provider=self.commentary.PROVIDER,
+                    model=self.commentary.model,
+                    prompt_version=self.commentary.PROMPT_VERSION,
+                )
                 snapshot.ai_summary = summary
                 db.session.commit()
 
@@ -226,6 +244,32 @@ class SentinelOrchestrator:
             "alert_status": alert.status if alert else None,
             "daily_email_sent": daily_sent,
         }
+
+    def _previous_scores(self, market_as_of: date) -> list[int]:
+        research_rows = (
+            ScoreRun.query.filter(
+                ScoreRun.market_as_of < market_as_of,
+                ScoreRun.score_version == self.risk_engine.SCORE_VERSION,
+                ScoreRun.is_canonical.is_(True),
+                ScoreRun.is_demo.is_(False),
+            )
+            .order_by(desc(ScoreRun.market_as_of))
+            .limit(3)
+            .all()
+        )
+        if research_rows:
+            return [row.score for row in research_rows]
+
+        legacy_rows = (
+            Snapshot.query.filter(
+                Snapshot.market_as_of < market_as_of,
+                Snapshot.is_demo.is_(False),
+            )
+            .order_by(desc(Snapshot.market_as_of))
+            .limit(3)
+            .all()
+        )
+        return [row.score for row in legacy_rows]
 
     def _fetch_macro(self) -> tuple[dict[str, Any], dict[str, Any]]:
         if not self.fred_client.configured:
