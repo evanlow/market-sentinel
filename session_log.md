@@ -92,4 +92,22 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** Added focused unit and integration tests for idempotency, changed-input revisions, canonical selection, commentary versioning, legacy migration, API validation, atomic exports, and orchestrator dual writes. Post-change CI is awaiting execution.  
 **Results:** Implementation and documentation are complete on the feature branch; no secrets or credentials were introduced.  
 **Risks / Blockers:** Dependency-backed validation must complete in GitHub Actions before handoff. Automatic forward-outcome population is intentionally not enabled; the schema is present for a separately reviewed study workflow after each horizon matures.  
-**Next Steps:** Run post-change Ruff and pytest on Python 3.11/3.12, correct every warning or failure, review automated feedback, then record the handoff checkpoint.
+**Next Steps:** Run post-change Ruff and pytest on Python 3.11/3.12, correct every warning or failure, review automated feedback, then record the handoff checkpoint.  
+
+---
+
+### 2026-07-23 — Research History Post-Change Diagnosis
+
+**Checkpoint Type:** Test Gate  
+**Directive Compliance KPI:** 6/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 tracking remained current; #3 the baseline stayed green; #5 no UI code changed; #6 API and CLI validation tests are present; #7 every reported review issue was reproduced or covered with a regression test; #8 diagnosis and remediation are recorded.  
+- **Yellow:** #2 no verified local project virtual environment is available; #4 the final post-change matrix is being rerun after fixes.  
+- **Red:** none.  
+**Trigger Event:** GitHub Actions run 29989838467 completed with one Ruff import-formatting violation while the pytest suite completed successfully. Automated review then identified live/demo partition edge cases.  
+**KPI Delta:** No KPI change; the test gate remains yellow until the final workflow is green.  
+**Actions Completed:** Downloaded and inspected the Ruff diagnostic artifact; fixed the import block; added regression tests for deterministic set hashing, score-version isolation, safe legacy migration, and independent live/demo partitions; updated uniqueness constraints, input hashing, canonical keys, revision sequencing, and migration queries to include `is_demo`; resolved all review threads; documented the partition semantics.  
+**Tests Run:** GitHub Actions Python 3.11/3.12 matrix; pytest with coverage passed before the Ruff gate reported `I001`. Focused regression tests were added before the corresponding partition fixes.  
+**Results:** The known Ruff and review findings have been corrected. No credentials were added.  
+**Risks / Blockers:** A requested Codex cloud review could not run because this repository has no configured Codex environment; GitHub Actions and Copilot review remain the available independent gates.  
+**Next Steps:** Run the complete final GitHub Actions matrix on the latest head, correct any remaining warning or failure, then record the handoff checkpoint.
