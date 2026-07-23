@@ -5,7 +5,6 @@ from datetime import date
 from market_sentinel.services.risk import RiskEngine
 from market_sentinel.services.types import Metric
 
-
 VALUES = {
     "spy_drawdown_252d_pct": 0.0,
     "spy_vs_50d_pct": 1.0,
