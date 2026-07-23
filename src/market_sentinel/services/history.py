@@ -147,7 +147,9 @@ class ResearchHistoryService:
 
         previous = self._canonical_for_date(snapshot.market_as_of, score_version)
         self._clear_canonical(previous)
-        calculated_at = self._as_utc(snapshot.captured_at or snapshot.updated_at or datetime.now(UTC))
+        calculated_at = self._as_utc(
+            snapshot.captured_at or snapshot.updated_at or datetime.now(UTC)
+        )
         run = ScoreRun(
             market_as_of=snapshot.market_as_of,
             calculated_at=calculated_at,
@@ -209,6 +211,8 @@ class ResearchHistoryService:
         error: str | None = None,
         structured_response: dict[str, Any] | None = None,
     ) -> CommentaryRun:
+        if run.id is None:
+            db.session.flush()
         input_hash = self._hash_payload(
             {
                 "score_run_input_hash": run.input_hash,
@@ -232,7 +236,7 @@ class ResearchHistoryService:
             return existing
 
         commentary = CommentaryRun(
-            score_run_id=run.id,
+            score_run=run,
             provider=provider,
             model=model,
             prompt_version=prompt_version,
@@ -350,6 +354,9 @@ class ResearchHistoryService:
             quality_status = self._quality_status(value, staleness_days)
             provider = str(item.get("source") or "legacy")
             unit = str(item.get("unit") or "")
+            display_value = item.get("display_value")
+            if display_value is None:
+                display_value = "Not available" if value is None else str(value)
             source_payload = {
                 "series_key": key,
                 "provider": provider,
@@ -380,13 +387,15 @@ class ResearchHistoryService:
                     category=str(item.get("category") or "legacy"),
                     value=value,
                     unit=unit,
-                    display_value=str(item.get("display_value") or value or "Not available"),
+                    display_value=str(display_value),
                     points=int(item.get("points") or 0),
                     max_points=int(item.get("max_points") or 0),
                     status=str(item.get("status") or "unknown"),
                     source=provider,
                     observation_as_of=observation_date,
-                    description=str(item.get("description") or "Legacy snapshot indicator"),
+                    description=str(
+                        item.get("description") or "Legacy snapshot indicator"
+                    ),
                     detail=item.get("detail"),
                     thresholds=rule.to_dict() if rule else {},
                     staleness_days=staleness_days,
@@ -489,8 +498,20 @@ class ResearchHistoryService:
         if isinstance(value, (date, datetime)):
             return value.isoformat()
         if isinstance(value, dict):
-            return {str(key): cls._normalise(item) for key, item in sorted(value.items())}
-        if isinstance(value, (list, tuple, set)):
+            ordered_items = sorted(value.items(), key=lambda item: str(item[0]))
+            return {str(key): cls._normalise(item) for key, item in ordered_items}
+        if isinstance(value, set):
+            normalized = [cls._normalise(item) for item in value]
+            return sorted(
+                normalized,
+                key=lambda item: json.dumps(
+                    item,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ),
+            )
+        if isinstance(value, (list, tuple)):
             return [cls._normalise(item) for item in value]
         item_method = getattr(value, "item", None)
         if callable(item_method):
