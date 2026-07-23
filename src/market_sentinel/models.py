@@ -80,17 +80,29 @@ class ScoreRun(db.Model):
         UniqueConstraint(
             "market_as_of",
             "score_version",
+            "is_demo",
             "revision",
             name="uq_score_run_date_version_revision",
         ),
         UniqueConstraint(
             "market_as_of",
             "score_version",
+            "is_demo",
             "input_hash",
             name="uq_score_run_date_version_input",
         ),
-        Index("ix_score_runs_canonical_date", "is_canonical", "market_as_of"),
-        Index("ix_score_runs_version_date", "score_version", "market_as_of"),
+        Index(
+            "ix_score_runs_canonical_date",
+            "is_canonical",
+            "is_demo",
+            "market_as_of",
+        ),
+        Index(
+            "ix_score_runs_version_date",
+            "score_version",
+            "is_demo",
+            "market_as_of",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
