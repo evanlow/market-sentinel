@@ -107,3 +107,21 @@ def test_demo_dashboard_can_use_demo_score_run_history(app, client):
 
     assert response.status_code == 200
     assert b'"scores": [40, 58]' in response.data
+
+
+def test_migration_does_not_replace_existing_live_run(app):
+    with app.app_context():
+        market_date = date(2026, 1, 5)
+        live_run = score_run(market_date, 47)
+        legacy_snapshot = snapshot(market_date, 47)
+        db.session.add_all([live_run, legacy_snapshot])
+        db.session.commit()
+
+        result = ResearchHistoryService(RiskEngine()).migrate_snapshot(legacy_snapshot)
+        db.session.commit()
+
+        assert result.created is False
+        assert result.run.id == live_run.id
+        assert ScoreRun.query.count() == 1
+        assert live_run.run_type == "live"
+        assert live_run.is_canonical is True
