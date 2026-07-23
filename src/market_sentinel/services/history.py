@@ -120,6 +120,20 @@ class ResearchHistoryService:
         score_version = self.risk_engine.SCORE_VERSION
         ruleset = self.risk_engine.ruleset_payload()
         ruleset_hash = self.risk_engine.ruleset_hash()
+
+        # Migration is a one-time bootstrap. Never let a lossy Snapshot projection
+        # supersede a live, revised, backfilled, or previously migrated score run.
+        existing_for_date = (
+            ScoreRun.query.filter_by(
+                market_as_of=snapshot.market_as_of,
+                score_version=score_version,
+            )
+            .order_by(desc(ScoreRun.is_canonical), desc(ScoreRun.revision))
+            .first()
+        )
+        if existing_for_date is not None:
+            return ArchiveResult(run=existing_for_date, created=False)
+
         input_hash = self._hash_payload(
             {
                 "legacy_snapshot_id": snapshot.id,
@@ -136,17 +150,6 @@ class ResearchHistoryService:
                 "ruleset_hash": ruleset_hash,
             }
         )
-        existing = ScoreRun.query.filter_by(
-            market_as_of=snapshot.market_as_of,
-            score_version=score_version,
-            input_hash=input_hash,
-        ).one_or_none()
-        if existing is not None:
-            self._select_canonical(existing)
-            return ArchiveResult(run=existing, created=False)
-
-        previous = self._canonical_for_date(snapshot.market_as_of, score_version)
-        self._clear_canonical(previous)
         calculated_at = self._as_utc(
             snapshot.captured_at or snapshot.updated_at or datetime.now(UTC)
         )
@@ -163,11 +166,11 @@ class ResearchHistoryService:
             ruleset_hash=ruleset_hash,
             input_hash=input_hash,
             code_commit_sha=current_app.config.get("APP_GIT_SHA") or None,
-            revision=self._next_revision(snapshot.market_as_of, score_version),
+            revision=1,
             run_type=run_type,
             is_canonical=True,
             canonical_key=self._canonical_key(snapshot.market_as_of, score_version),
-            supersedes_run_id=previous.id if previous else None,
+            supersedes_run_id=None,
             ruleset=ruleset,
             indicators=self._normalise(snapshot.indicators),
             triggers=self._normalise(snapshot.triggers),
