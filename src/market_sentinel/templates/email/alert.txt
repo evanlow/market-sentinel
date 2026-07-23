@@ -1,0 +1,12 @@
+{{ severity|upper }} ALERT — Market Sentinel {{ snapshot.score }}/100
+Market date: {{ snapshot.market_as_of.isoformat() }}
+Data coverage: {{ "%.0f"|format(snapshot.coverage * 100) }}%
+
+Why this alert fired:
+{% for reason in reasons %}- {{ reason }}
+{% endfor %}
+{% if snapshot.ai_summary %}
+Context:
+{{ snapshot.ai_summary }}
+{% endif %}
+This alert reports rule-based market stress. It is not investment advice or a guarantee that a crash will occur.

@@ -1,0 +1,17 @@
+Market Sentinel Daily — {{ snapshot.regime|upper }} — {{ snapshot.score }}/100
+Market date: {{ snapshot.market_as_of.isoformat() }}
+Data coverage: {{ "%.0f"|format(snapshot.coverage * 100) }}%
+Score change: {{ "%+.0f"|format(snapshot.score_change_1d) if snapshot.score_change_1d is not none else "n/a" }} one day; {{ "%+.0f"|format(snapshot.score_change_3d) if snapshot.score_change_3d is not none else "n/a" }} three days
+
+Active critical triggers:
+{% set active = snapshot.triggers | selectattr('active') | list %}{% if active %}{% for trigger in active %}- {{ trigger.label }}
+{% endfor %}{% else %}- None
+{% endif %}
+Highest-scoring indicators:
+{% for item in snapshot.indicators | sort(attribute='points', reverse=true) %}{% if item.points > 0 %}- {{ item.label }}: {{ item.display_value }} ({{ item.points }}/{{ item.max_points }})
+{% endif %}{% endfor %}
+{% if snapshot.ai_summary %}
+Interpretation:
+{{ snapshot.ai_summary }}
+{% endif %}
+This is an informational monitoring tool, not investment advice or a guaranteed crash prediction.
