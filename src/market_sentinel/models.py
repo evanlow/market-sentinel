@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -20,7 +20,7 @@ from .extensions import db
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Snapshot(db.Model):
@@ -43,7 +43,7 @@ class Snapshot(db.Model):
     ai_summary: Mapped[str | None] = mapped_column(Text)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    alerts: Mapped[list["AlertEvent"]] = relationship(
+    alerts: Mapped[list[AlertEvent]] = relationship(
         back_populates="snapshot", cascade="all, delete-orphan"
     )
 
