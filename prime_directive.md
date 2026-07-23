@@ -7,7 +7,7 @@
 
 ---
 
-## 📋 Quick Reference - Before Every Commit
+## Quick Reference - Before Every Commit
 
 ```markdown
 Pre-Commit Checklist:
@@ -20,7 +20,7 @@ For Backend-Only Changes:
 □ Tests added/updated for new code
 □ All tests pass
 □ Any strange behavior investigated (Principle 8)
-→ Ready to commit
+-> Ready to commit
 
 For UI Changes (HTML/CSS/JavaScript):
 □ Backend tests passing
@@ -30,7 +30,7 @@ For UI Changes (HTML/CSS/JavaScript):
 □ Input validation: Frontend (UX) + Backend (Security) (Principle 7)
 □ Any strange behavior investigated (Principle 8)
 □ Manual testing documented in commit message
-→ Ready to commit
+-> Ready to commit
 
 Session Log Cadence (Mandatory):
 □ Append `session_log.md` at start, each test run, each major implementation cycle, and handoff (include KPI delta)
@@ -58,7 +58,7 @@ Approved ASCII replacements:
 
 ---
 
-## 📊 Live Directive Compliance KPI (Session-Level)
+## Live Directive Compliance KPI (Session-Level)
 
 Use a live compliance score throughout every working session to make adherence observable and auditable in real time.
 
@@ -101,16 +101,16 @@ Append an entry to `session_log.md` at the following minimum cadence:
 
 ---
 
-## 🎯 Core Principles
+## Core Principles
 
 ### 0. **Virtual Environment Verification - ALWAYS FIRST**
 **CRITICAL:** Before ANY pip install, pytest, or Python execution, VERIFY you are in the virtual environment.
 
 **The Protocol:**
-1. ✅ **Check Python path** - run `python -c "import sys; print(sys.executable)"`
-2. ✅ **Verify it points to project venv** - path should contain project venv path
-3. ❌ **If using global Python** - activate venv first
-4. ✅ **Re-verify after activation** - check Python path again to confirm activation worked
+1. [OK] **Check Python path** - run `python -c "import sys; print(sys.executable)"`
+2. [OK] **Verify it points to project venv** - path should contain project venv path
+3. [FAIL] **If using global Python** - activate venv first
+4. [OK] **Re-verify after activation** - check Python path again to confirm activation worked
 
 **CRITICAL - DO NOT CREATE NEW VENV WHEN ONE EXISTS:**
 - Check for existing venv indicators FIRST (e.g., `.venv/`, `venv/`)
@@ -120,17 +120,17 @@ Append an entry to `session_log.md` at the following minimum cadence:
 All tests must pass AND produce zero warnings before AND after ANY code changes. No exceptions.
 
 **MANDATORY: Tests Must Exist Before Code Changes**
-- ❌ **Never make code changes without test coverage**
-- ✅ **Write tests FIRST for new features (TDD)**
-- ✅ **Add tests IMMEDIATELY when fixing bugs**
-- ❌ **Never commit untested code** - tests prevent regressions
+- [FAIL] **Never make code changes without test coverage**
+- [OK] **Write tests FIRST for new features (TDD)**
+- [OK] **Add tests IMMEDIATELY when fixing bugs**
+- [FAIL] **Never commit untested code** - tests prevent regressions
 
 **The Protocol:**
-1. ✅ Verify baseline - run full test suite BEFORE any changes (zero failures, zero warnings)
-2. 🔄 Make changes (one logical step at a time)
-3. ✅ **Run tests IMMEDIATELY** after changes (zero failures, zero warnings)
-4. ❌ If tests fail OR warnings appear - fix immediately or revert
-5. ✅ Only commit when tests pass + manual verification complete (if UI changed)
+1. [OK] Verify baseline - run full test suite BEFORE any changes (zero failures, zero warnings)
+2. [TODO] Make changes (one logical step at a time)
+3. [OK] **Run tests IMMEDIATELY** after changes (zero failures, zero warnings)
+4. [FAIL] If tests fail OR warnings appear - fix immediately or revert
+5. [OK] Only commit when tests pass + manual verification complete (if UI changed)
 
 **Warning Policy:**
 - Warnings are NOT acceptable - they must be investigated and resolved
@@ -141,7 +141,7 @@ All tests must pass AND produce zero warnings before AND after ANY code changes.
 ### 2. **Verify First, Code Second**  
 Never assume how existing code works. Always verify before implementing.
 
-**✅ Do:**
+**[OK] Do:**
 - Check existing code patterns before implementing
 - Verify method signatures and return types
 - Look for usage examples in tests
@@ -149,7 +149,7 @@ Never assume how existing code works. Always verify before implementing.
 ### 3. **Defensive Programming Always**  
 Assume nothing. Handle None, validate inputs, check bounds.
 
-**✅ Do:**
+**[OK] Do:**
 ```python
 position = self.get_position(symbol) or 0  # Default to 0 if None
 if position <= 0:
@@ -163,18 +163,18 @@ Build and verify in small steps. Don't write 300 lines before testing.
 **CRITICAL:** Backend tests (pytest, unittest) **CANNOT** catch frontend bugs. Know the gap.
 
 **The Reality Check:**
-- ✅ Backend tests verify: routes work, logic correct, data flows properly
-- ❌ Backend tests **MISS**: JavaScript bugs, form behavior, UI interactions, browser rendering
-- 🎯 **100% backend test pass ≠ working application from user perspective**
+- [OK] Backend tests verify: routes work, logic correct, data flows properly
+- [FAIL] Backend tests **MISS**: JavaScript bugs, form behavior, UI interactions, browser rendering
+- **100% backend test pass does NOT equal working application from user perspective**
 
 **The Protocol - Web Applications:**
 
 **After ANY UI Change (HTML/CSS/JavaScript):**
-1. ✅ **Run backend tests** - ensure server-side still works (100% pass required)
-2. ✅ **Manual smoke test** - actually use the application (MANDATORY)
-3. ✅ **Check browser console** - no JavaScript errors (F12 DevTools)
-4. ✅ **Test critical user flows** - can users complete key tasks?
-5. ✅ **Verify on refresh** - state persists, no unexpected resets
+1. [OK] **Run backend tests** - ensure server-side still works (100% pass required)
+2. [OK] **Manual smoke test** - actually use the application (MANDATORY)
+3. [OK] **Check browser console** - no JavaScript errors (F12 DevTools)
+4. [OK] **Test critical user flows** - can users complete key tasks?
+5. [OK] **Verify on refresh** - state persists, no unexpected resets
 
 ### 6. **User-Facing Output Quality - No Truncated Business Content**
 **CRITICAL:** Do not ship user-facing documents with truncated sentences unless explicitly labeled as a preview.
@@ -222,7 +222,7 @@ Before writing **any** path into a command (especially for output redirection), 
 
 **The Correct Pattern:**
 ```python
-# ✅ CORRECT — load secrets from environment variables
+# CORRECT - load secrets from environment variables
 import os
 from dotenv import load_dotenv
 
@@ -260,32 +260,32 @@ main          ← production-ready only; never commit directly here
 
 ---
 
-## 🧪 Testing Strategy Decision Matrix
+## Testing Strategy Decision Matrix
 
 **Quick Guide: What Testing Do I Need?**
 
 | Change Type | Backend Tests | Manual UI Test | E2E Browser Tests |
 |-------------|--------------|----------------|-------------------|
-| **Backend logic only** | ✅ Required | ❌ Not needed | ❌ Not needed |
-| **UI only** (CSS, static HTML) | ⚠️ Run existing | ✅ Required | ❌ Not needed |
-| **JavaScript/Forms** | ✅ Required | ✅ Required | ⚠️ Consider for complex |
-| **Full-stack feature** | ✅ Required | ✅ Required | ⚠️ Consider for critical |
-| **Bug fix** (any layer) | ✅ Add regression test | ✅ Required if UI | ❌ Usually not needed |
+| **Backend logic only** | [OK] Required | [FAIL] Not needed | [FAIL] Not needed |
+| **UI only** (CSS, static HTML) | [WAIT] Run existing | [OK] Required | [FAIL] Not needed |
+| **JavaScript/Forms** | [OK] Required | [OK] Required | [WAIT] Consider for complex |
+| **Full-stack feature** | [OK] Required | [OK] Required | [WAIT] Consider for critical |
+| **Bug fix** (any layer) | [OK] Add regression test | [OK] Required if UI | [FAIL] Usually not needed |
 
 ---
 
-## 🔍 Pre-Implementation Checklist
+## Pre-Implementation Checklist
 
 Before writing ANY new code that uses existing classes/methods:
 
-### ☑️ Research Phase (Mandatory)
+### Research Phase (Mandatory)
 
 1. **Check Method Signatures** - Use grep/search to find method definitions
 2. **Verify Enum Values** - Read the enum definition
 3. **Inspect Data Structures** - Check class attributes and properties
 4. **Find Usage Examples** - See how others use this API
 
-### ☑️ Before Calling Any Method
+### Before Calling Any Method
 
 - [ ] Checked the method signature (parameters, types, order)
 - [ ] Verified return type (can it be None? Optional?)
@@ -295,7 +295,7 @@ Before writing ANY new code that uses existing classes/methods:
 
 ---
 
-## 🚨 Common Pitfalls & Solutions
+## Common Pitfalls & Solutions
 
 ### Pitfall 1: Wrong Enum Values
 **Problem:** Assuming enum names without checking
@@ -319,7 +319,7 @@ Before writing ANY new code that uses existing classes/methods:
 
 ---
 
-## 📋 Development Workflow (The Right Way™)
+## Development Workflow (The Right Way)
 
 ### Phase 1: Research (15-30% of time)
 1. Understand the requirement
@@ -354,11 +354,11 @@ Before writing ANY new code that uses existing classes/methods:
 
 ---
 
-## ✅ Code Quality Standards
+## Code Quality Standards
 
 ### Type Safety
 ```python
-# ✅ GOOD: Use type hints
+# GOOD: Use type hints
 def calculate_value(
     self, 
     symbol: str, 
@@ -370,11 +370,11 @@ def calculate_value(
 
 ### Error Handling
 ```python
-# ✅ GOOD: Validate inputs
+# GOOD: Validate inputs
 if not symbol or symbol not in self.config.symbols:
     return
 
-# ✅ GOOD: Handle exceptions gracefully
+# GOOD: Handle exceptions gracefully
 try:
     result = risky_operation()
 except SpecificError as e:
@@ -384,7 +384,7 @@ except SpecificError as e:
 
 ---
 
-## 🎯 Success Metrics
+## Success Metrics
 
 ### Before Considering Code "Done"
 
@@ -403,18 +403,18 @@ except SpecificError as e:
 ### Definition of "Done"
 
 Code is only done when:
-1. ✅ Baseline tests verified (before changes): X passed, 0 warnings
-2. ✅ Changes implemented
-3. ✅ Tests pass after changes (verify again): X passed, 0 warnings
-4. ✅ Zero warnings (all warnings investigated and resolved)
-5. ✅ Error handling complete
-6. ✅ Integrated and verified
-7. ✅ Documented
-8. ✅ Committed with test count AND warning count
+1. [DONE] Baseline tests verified (before changes): X passed, 0 warnings
+2. [DONE] Changes implemented
+3. [DONE] Tests pass after changes (verify again): X passed, 0 warnings
+4. [DONE] Zero warnings (all warnings investigated and resolved)
+5. [DONE] Error handling complete
+6. [DONE] Integrated and verified
+7. [DONE] Documented
+8. [DONE] Committed with test count AND warning count
 
 ---
 
-## 🤝 Team Expectations
+## Team Expectations
 
 ### For All Team Members (Human & AI)
 
@@ -444,7 +444,7 @@ Code is only done when:
 
 ---
 
-## 📚 Resources
+## Resources
 
 ### Internal Documentation
 - `README.md` - Project overview
@@ -459,7 +459,7 @@ Code is only done when:
 
 ---
 
-## 🔄 Document Maintenance
+## Document Maintenance
 
 ### When to Update This Document
 
@@ -479,7 +479,7 @@ Code is only done when:
 
 ---
 
-## 💡 Remember
+## Remember
 
 > **"100% test pass rate with zero warnings is not a goal - it's a requirement."**
 
@@ -494,9 +494,9 @@ Code is only done when:
 ---
 
 ## Code Quality Standards (Target State)
-✅ No duplicate implementations for the same behavior
-✅ 100% test pass rate maintained before and after changes
-✅ Zero warnings maintained (all warnings investigated and resolved)
-✅ Clear git history with detailed commit messages
-✅ Zero breaking changes to existing user-critical workflows
-✅ TDD or immediate regression-test coverage for bug fixes and new logic
+- [DONE] No duplicate implementations for the same behavior
+- [DONE] 100% test pass rate maintained before and after changes
+- [DONE] Zero warnings maintained (all warnings investigated and resolved)
+- [DONE] Clear git history with detailed commit messages
+- [DONE] Zero breaking changes to existing user-critical workflows
+- [DONE] TDD or immediate regression-test coverage for bug fixes and new logic
