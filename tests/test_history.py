@@ -98,7 +98,7 @@ def test_archive_is_idempotent_and_persists_normalized_lineage(app):
         stored = ScoreRun.query.one()
         assert stored.revision == 1
         assert stored.is_canonical is True
-        assert stored.canonical_key == "2026-01-05:1.0.0"
+        assert stored.canonical_key == "2026-01-05:1.0.0:live"
         assert stored.ruleset_hash == RiskEngine().ruleset_hash()
         assert len(stored.input_hash) == 64
         assert stored.indicator_records[0].thresholds
