@@ -58,19 +58,29 @@ class ResearchHistoryService:
             metrics=metrics,
             source_status=source_status,
             ruleset_hash=ruleset_hash,
+            is_demo=is_demo,
         )
 
         existing = ScoreRun.query.filter_by(
             market_as_of=assessment.market_as_of,
             score_version=score_version,
+            is_demo=is_demo,
             input_hash=input_hash,
         ).one_or_none()
         if existing is not None:
             self._select_canonical(existing)
             return ArchiveResult(run=existing, created=False)
 
-        previous = self._canonical_for_date(assessment.market_as_of, score_version)
-        revision = self._next_revision(assessment.market_as_of, score_version)
+        previous = self._canonical_for_date(
+            assessment.market_as_of,
+            score_version,
+            is_demo,
+        )
+        revision = self._next_revision(
+            assessment.market_as_of,
+            score_version,
+            is_demo,
+        )
         effective_run_type = "revision" if previous is not None and run_type == "live" else run_type
         self._clear_canonical(previous)
 
@@ -90,7 +100,11 @@ class ResearchHistoryService:
             revision=revision,
             run_type=effective_run_type,
             is_canonical=True,
-            canonical_key=self._canonical_key(assessment.market_as_of, score_version),
+            canonical_key=self._canonical_key(
+                assessment.market_as_of,
+                score_version,
+                is_demo,
+            ),
             supersedes_run_id=previous.id if previous else None,
             ruleset=ruleset,
             indicators=[item.to_dict() for item in assessment.indicators],
@@ -122,11 +136,12 @@ class ResearchHistoryService:
         ruleset_hash = self.risk_engine.ruleset_hash()
 
         # Migration is a one-time bootstrap. Never let a lossy Snapshot projection
-        # supersede a live, revised, backfilled, or previously migrated score run.
+        # supersede an existing run in the same live/demo research partition.
         existing_for_date = (
             ScoreRun.query.filter_by(
                 market_as_of=snapshot.market_as_of,
                 score_version=score_version,
+                is_demo=snapshot.is_demo,
             )
             .order_by(desc(ScoreRun.is_canonical), desc(ScoreRun.revision))
             .first()
@@ -169,7 +184,11 @@ class ResearchHistoryService:
             revision=1,
             run_type=run_type,
             is_canonical=True,
-            canonical_key=self._canonical_key(snapshot.market_as_of, score_version),
+            canonical_key=self._canonical_key(
+                snapshot.market_as_of,
+                score_version,
+                snapshot.is_demo,
+            ),
             supersedes_run_id=None,
             ruleset=ruleset,
             indicators=self._normalise(snapshot.indicators),
@@ -413,6 +432,7 @@ class ResearchHistoryService:
         metrics: dict[str, Metric],
         source_status: dict[str, Any],
         ruleset_hash: str,
+        is_demo: bool,
     ) -> str:
         metric_payload = [
             {
@@ -430,6 +450,7 @@ class ResearchHistoryService:
                 "market_as_of": assessment.market_as_of,
                 "score_version": self.risk_engine.SCORE_VERSION,
                 "ruleset_hash": ruleset_hash,
+                "is_demo": is_demo,
                 "metrics": metric_payload,
                 "source_status": source_status,
             }
@@ -442,14 +463,24 @@ class ResearchHistoryService:
             raise ValueError(f"run_type must be one of: {allowed}")
 
     @staticmethod
-    def _canonical_key(market_as_of: date, score_version: str) -> str:
-        return f"{market_as_of.isoformat()}:{score_version}"
+    def _canonical_key(
+        market_as_of: date,
+        score_version: str,
+        is_demo: bool,
+    ) -> str:
+        partition = "demo" if is_demo else "live"
+        return f"{market_as_of.isoformat()}:{score_version}:{partition}"
 
     @staticmethod
-    def _canonical_for_date(market_as_of: date, score_version: str) -> ScoreRun | None:
+    def _canonical_for_date(
+        market_as_of: date,
+        score_version: str,
+        is_demo: bool,
+    ) -> ScoreRun | None:
         return ScoreRun.query.filter_by(
             market_as_of=market_as_of,
             score_version=score_version,
+            is_demo=is_demo,
             is_canonical=True,
         ).one_or_none()
 
@@ -464,19 +495,32 @@ class ResearchHistoryService:
     def _select_canonical(self, run: ScoreRun) -> None:
         if run.is_canonical:
             return
-        current = self._canonical_for_date(run.market_as_of, run.score_version)
+        current = self._canonical_for_date(
+            run.market_as_of,
+            run.score_version,
+            run.is_demo,
+        )
         self._clear_canonical(current)
         run.is_canonical = True
-        run.canonical_key = self._canonical_key(run.market_as_of, run.score_version)
+        run.canonical_key = self._canonical_key(
+            run.market_as_of,
+            run.score_version,
+            run.is_demo,
+        )
         db.session.flush()
 
     @staticmethod
-    def _next_revision(market_as_of: date, score_version: str) -> int:
+    def _next_revision(
+        market_as_of: date,
+        score_version: str,
+        is_demo: bool,
+    ) -> int:
         maximum = (
             db.session.query(func.max(ScoreRun.revision))
             .filter(
                 ScoreRun.market_as_of == market_as_of,
                 ScoreRun.score_version == score_version,
+                ScoreRun.is_demo.is_(is_demo),
             )
             .scalar()
         )
