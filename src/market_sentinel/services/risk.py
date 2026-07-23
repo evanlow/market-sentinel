@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from .types import IndicatorResult, Metric, RiskAssessment
 
@@ -23,8 +25,21 @@ class Rule:
                 return points
         return 0
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "key": self.key,
+            "max_points": self.max_points,
+            "direction": self.direction,
+            "thresholds": [
+                {"threshold": threshold, "points": points}
+                for threshold, points in self.thresholds
+            ],
+        }
+
 
 class RiskEngine:
+    SCORE_VERSION = "1.0.0"
+    INDICATOR_VERSION = "1.0.0"
     TOTAL_MAX_POINTS = 100
 
     RULES = (
@@ -106,6 +121,26 @@ class RiskEngine:
             indicators=results,
             triggers=triggers,
         )
+
+    @classmethod
+    def ruleset_payload(cls) -> dict[str, Any]:
+        return {
+            "score_version": cls.SCORE_VERSION,
+            "indicator_version": cls.INDICATOR_VERSION,
+            "total_max_points": cls.TOTAL_MAX_POINTS,
+            "rules": [rule.to_dict() for rule in cls.RULES],
+        }
+
+    @classmethod
+    def ruleset_hash(cls) -> str:
+        payload = json.dumps(
+            cls.ruleset_payload(), sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    @classmethod
+    def rule_for_key(cls, key: str) -> Rule | None:
+        return next((rule for rule in cls.RULES if rule.key == key), None)
 
     @staticmethod
     def regime_for_score(score: int) -> str:
