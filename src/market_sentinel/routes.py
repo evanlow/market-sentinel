@@ -13,8 +13,12 @@ bp = Blueprint("main", __name__)
 
 @bp.get("/")
 def dashboard():
-    latest = Snapshot.query.order_by(desc(Snapshot.market_as_of)).first()
-    history = Snapshot.query.order_by(desc(Snapshot.market_as_of)).limit(60).all()
+    latest = Snapshot.query.filter_by(is_demo=False).order_by(desc(Snapshot.market_as_of)).first()
+    history_query = Snapshot.query.filter_by(is_demo=False)
+    if latest is None:
+        latest = Snapshot.query.order_by(desc(Snapshot.market_as_of)).first()
+        history_query = Snapshot.query
+    history = history_query.order_by(desc(Snapshot.market_as_of)).limit(60).all()
     history.reverse()
 
     categories = defaultdict(list)
@@ -36,7 +40,9 @@ def dashboard():
 
 @bp.get("/api/status")
 def api_status():
-    latest = Snapshot.query.order_by(desc(Snapshot.market_as_of)).first()
+    latest = Snapshot.query.filter_by(is_demo=False).order_by(desc(Snapshot.market_as_of)).first()
+    if latest is None:
+        latest = Snapshot.query.order_by(desc(Snapshot.market_as_of)).first()
     if latest is None:
         return jsonify({"status": "no_data", "message": "No snapshot has been collected yet."})
     return jsonify(latest.to_dict())
