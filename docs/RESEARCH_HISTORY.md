@@ -33,13 +33,14 @@ Each row represents one immutable calculation result. Important fields include:
 - `score_version`: semantic version of the deterministic methodology;
 - `ruleset_hash`: SHA-256 identity of the complete weights and thresholds;
 - `input_hash`: SHA-256 identity of the exact metric bundle and source status;
-- `revision`: sequential revision for a market date and score version;
+- `revision`: sequential revision within a market date, score version, and live/demo partition;
 - `run_type`: `live`, `revision`, `backfill`, `simulation`, or `legacy`;
-- `is_canonical`: whether this is the currently selected result for the date/version;
+- `is_canonical`: whether this is the currently selected result for its partition;
+- `is_demo`: separates synthetic demonstration records from operational history;
 - `supersedes_run_id`: prior canonical revision, when applicable;
 - `code_commit_sha`: deployment commit supplied through `APP_GIT_SHA`.
 
-`canonical_key` enforces at most one canonical run for each market date and score version while allowing any number of superseded revisions.
+`canonical_key` enforces at most one canonical run for each market date, score version, and live/demo partition while allowing any number of superseded revisions. Demo and non-demo runs can therefore coexist without affecting each other's revision sequence or canonical selection.
 
 ### `indicator_records`
 
@@ -63,13 +64,14 @@ The archive service hashes:
 
 - market date;
 - score version;
+- live/demo partition;
 - ruleset hash;
 - every metric value, unit, source, and observation date;
 - source-status metadata.
 
 Running the daily job twice with identical inputs reuses the existing score run and does not duplicate indicator rows.
 
-When any input changes for the same market date and methodology, Market Sentinel creates the next revision, marks the earlier run non-canonical, records `supersedes_run_id`, and selects the new canonical row. The earlier revision remains queryable and exportable.
+When any input changes within the same market date, methodology, and live/demo partition, Market Sentinel creates the next revision, marks the earlier run non-canonical, records `supersedes_run_id`, and selects the new canonical row. The earlier revision remains queryable and exportable.
 
 This supports two distinct research views:
 
@@ -87,7 +89,7 @@ flask --app wsgi sentinel migrate-history
 
 `init-db` creates the new additive tables. It does not drop or rewrite the existing `snapshots`, `manual_metrics`, or `alert_events` tables.
 
-`migrate-history` copies existing snapshots into research tables and is safe to run repeatedly. The command reports how many rows were created and how many were already present.
+`migrate-history` copies existing snapshots into research tables and is safe to run repeatedly. The command reports how many rows were created and how many were already present. It never replaces an existing score run in the same date, version, and live/demo partition.
 
 Back up the database before any production upgrade even though this migration is additive.
 
