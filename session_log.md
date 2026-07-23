@@ -110,4 +110,22 @@ This file records AI-assisted development sessions, test gates, implementation c
 **Tests Run:** GitHub Actions Python 3.11/3.12 matrix; pytest with coverage passed before the Ruff gate reported `I001`. Focused regression tests were added before the corresponding partition fixes.  
 **Results:** The known Ruff and review findings have been corrected. No credentials were added.  
 **Risks / Blockers:** A requested Codex cloud review could not run because this repository has no configured Codex environment; GitHub Actions and Copilot review remain the available independent gates.  
-**Next Steps:** Run the complete final GitHub Actions matrix on the latest head, correct any remaining warning or failure, then record the handoff checkpoint.
+**Next Steps:** Run the complete final GitHub Actions matrix on the latest head, correct any remaining warning or failure, then record the handoff checkpoint.  
+
+---
+
+### 2026-07-23 — Research History Handoff
+
+**Checkpoint Type:** Handoff  
+**Directive Compliance KPI:** 7/8 green  
+**Green/Yellow/Red Breakdown:**  
+- **Green:** #1 compliance tracking remained live; #3 the baseline gate passed; #4 the complete post-change matrix passed; #5 no UI assets or browser behavior changed; #6 API and CLI inputs are validated and covered by tests; #7 reported edge cases were fixed with regression coverage; #8 implementation, tests, risks, and upgrade steps are documented.  
+- **Yellow:** #2 no local command was executed in a verified project virtual environment because the isolated connector workspace could not resolve the repository; dependency-backed GitHub Actions was used instead.  
+- **Red:** none.  
+**Trigger Event:** GitHub Actions CI run 29990703253 completed successfully on the reviewed implementation.  
+**KPI Delta:** +1 green after the final post-change quality gate.  
+**Actions Completed:** Completed append-only persistence, score/ruleset/input versioning, normalized lineage, revision-safe canonical selection, separate live/demo partitions, safe legacy migration, history APIs, atomic exports, deployment and backup guidance, documentation, and review remediation. The final pull request remains open and unmerged for owner review.  
+**Tests Run:** GitHub Actions matrix on Python 3.11 and 3.12. Each job installed the project and development dependencies, passed `ruff check .`, and passed `pytest --cov=market_sentinel --cov-report=term-missing`.  
+**Results:** Both matrix jobs passed with no Ruff diagnostics and no failed tests. No API keys, credentials, or generated data files were committed.  
+**Risks / Blockers:** Automatic forward-outcome calculation remains intentionally deferred; the schema is present, but a future job must define trading-session horizons and point-in-time data policy before populating outcomes. Production upgrades should be backed up before running the additive table bootstrap and idempotent history migration.  
+**Next Steps:** Review pull request #5, verify the production backup, then run `flask --app wsgi sentinel init-db` followed by `flask --app wsgi sentinel migrate-history` after merge.
