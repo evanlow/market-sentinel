@@ -23,7 +23,9 @@ def score_run(market_as_of: date, score: int, *, revision: int = 1, canonical: b
         revision=revision,
         run_type="live",
         is_canonical=canonical,
-        canonical_key=f"{market_as_of.isoformat()}:{version}" if canonical else None,
+        canonical_key=(
+            f"{market_as_of.isoformat()}:{version}:live" if canonical else None
+        ),
         ruleset={},
         indicators=[],
         triggers=[],
